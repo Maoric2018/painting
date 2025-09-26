@@ -1,17 +1,29 @@
 // --- State Variables ---
 let history = [];
 let redoStack = [];
+const HISTORY_LIMIT = 30;
 
 // --- Exported Functions ---
 
 /**
- * Saves the current state of the canvas to the history array.
- * @param {CanvasRenderingContext2D} ctx - The canvas rendering context.
- * @param {HTMLCanvasElement} canvas - The canvas element.
+ * Initializes the history with the first blank state.
+ * @param {CanvasRenderingContext2D} ctx - The context of the drawing canvas.
+ * @param {HTMLCanvasElement} canvas - The drawing canvas.
+ */
+export function initializeHistory(ctx, canvas) {
+    const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    history = [initialState];
+    redoStack = [];
+}
+
+/**
+ * Saves the current state of the drawing canvas to the history array.
+ * @param {CanvasRenderingContext2D} ctx - The context of the drawing canvas.
+ * @param {HTMLCanvasElement} canvas - The drawing canvas.
  */
 export function saveState(ctx, canvas) {
-    redoStack = [];
-    if (history.length > 30) {
+    redoStack = []; // A new action clears the redo stack.
+    if (history.length > HISTORY_LIMIT) {
         history.shift();
     }
     history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
@@ -19,19 +31,18 @@ export function saveState(ctx, canvas) {
 
 /**
  * Restores the canvas to a specific state from an ImageData object.
- * @param {CanvasRenderingContext2D} ctx - The canvas rendering context.
+ * @param {CanvasRenderingContext2D} ctx - The drawing canvas context.
  * @param {ImageData} imageData - The pixel data to restore.
  */
-export function restoreState(ctx, imageData) {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.putImageData(imageData, 0, 0);
-    ctx.restore();
+function restoreState(ctx, imageData) {
+    if (imageData) {
+        ctx.putImageData(imageData, 0, 0);
+    }
 }
 
 /**
  * Handles the undo action.
- * @param {CanvasRenderingContext2D} ctx - The canvas rendering context.
+ * @param {CanvasRenderingContext2D} ctx - The drawing canvas context.
  */
 export function undo(ctx) {
     if (history.length > 1) {
@@ -43,7 +54,7 @@ export function undo(ctx) {
 
 /**
  * Handles the redo action.
- * @param {CanvasRenderingContext2D} ctx - The canvas rendering context.
+ * @param {CanvasRenderingContext2D} ctx - The drawing canvas context.
  */
 export function redo(ctx) {
     if (redoStack.length > 0) {
@@ -54,29 +65,18 @@ export function redo(ctx) {
 }
 
 /**
- * Initializes the history with the first blank state.
- * @param {ImageData} initialState - The initial blank canvas data.
+ * Returns the current length of the history stack.
+ * @returns {number}
  */
-export function initializeHistory(initialState) {
-    history = [initialState];
-    redoStack = [];
-}
-
-/**
- * Gets the initial blank state of the canvas.
- * @param {CanvasRenderingContext2D} ctx - The canvas rendering context.
- * @param {HTMLCanvasElement} canvas - The canvas element.
- * @returns {ImageData}
- */
-export function getInitialState(ctx, canvas) {
-    return ctx.getImageData(0, 0, canvas.width, canvas.height);
-}
-
-// --- Getters for UI updates ---
 export function getHistoryLength() {
     return history.length;
 }
 
+/**
+ * Returns the current length of the redo stack.
+ * @returns {number}
+ */
 export function getRedoStackLength() {
     return redoStack.length;
 }
+

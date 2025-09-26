@@ -11,7 +11,7 @@ body {
     height: 40px;
     border-radius: 0.5rem;
     overflow: hidden;
-    border: 2px solid #4A5568; /* gray-700 */
+    border: 2px solid #374151; /* gray-700 */
 }
 
 .color-picker-wrapper input[type="color"] {
@@ -32,7 +32,7 @@ input[type="range"] {
     appearance: none;
     width: 100%;
     height: 8px;
-    background: #4A5568; /* gray-700 */
+    background: #374151; /* gray-700 */
     border-radius: 5px;
     outline: none;
     opacity: 0.7;
@@ -51,6 +51,7 @@ input[type="range"]::-webkit-slider-thumb {
     background: #6366F1; /* indigo-500 */
     cursor: pointer;
     border-radius: 50%;
+    transition: background .2s;
 }
 
 input[type="range"]::-moz-range-thumb {
@@ -60,34 +61,6 @@ input[type="range"]::-moz-range-thumb {
     cursor: pointer;
     border-radius: 50%;
 }
-
-/* Simple CSS for the toggle switch */
-input:checked ~ .dot {
-    transform: translateX(100%);
-}
-
-input:checked ~ .block {
-    background-color: #6366F1; indigo-500
-}
-
-/* Tool Button Styling */
-.tool-button {
-    background-color: #374151; /* gray-700 */
-    color: #D1D5DB; /* gray-300 */
-}
-
-.tool-button:hover {
-    background-color: #4B5563; /* gray-600 */
-}
-
-.tool-button.active {
-    background-color: #6366F1; /* indigo-500 */
-    color: white;
-    box-shadow: 0 0 0 2px #4338ca inset; /* focus ring effect */
-}
-
-
-/* Custom Styles for SketchPad */
 
 /* Tool Button Styling */
 .tool-button {
@@ -108,9 +81,15 @@ input:checked ~ .block {
 /* Brush Preview Cursor */
 #brush-preview {
     position: absolute;
+    border: 1px solid #fff;
     border-radius: 50%;
-    border: 1px solid rgba(0, 0, 0, 0.5);
-    background-color: rgba(0, 0, 0, 0.1);
-    pointer-events: none; /* Allows clicks to pass through to the canvas */
-    transform: translate(-50%, -50%); /* Centers the div on the cursor position */
+    pointer-events: none; /* Allows clicks to pass through */
+    mix-blend-mode: difference; /* Helps visibility on any color */
+    transform: translate(-50%, -50%); /* Center on cursor */
 }
+
+/* Canvas Cursors */
+.pan-cursor { cursor: grab; }
+.panning-cursor { cursor: grabbing; }
+.no-cursor { cursor: none; }
+.default-cursor { cursor: default; }
