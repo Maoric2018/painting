@@ -6,7 +6,7 @@
     <title>SketchPad - Online Drawing Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body class="bg-gray-800 text-gray-200">
 
@@ -62,6 +62,18 @@
 
             <!-- Spacer to push clear button to bottom -->
             <div class="flex-grow"></div>
+
+            <!-- Undo/Redo Buttons -->
+            <div class="grid grid-cols-2 gap-3">
+                <button id="undo-btn" class="flex items-center justify-center space-x-2 bg-gray-700 p-3 rounded-lg shadow-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                    <span>Undo</span>
+                </button>
+                <button id="redo-btn" class="flex items-center justify-center space-x-2 bg-gray-700 p-3 rounded-lg shadow-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>
+                    <span>Redo</span>
+                </button>
+            </div>
 
             <!-- Clear Canvas Button -->
             <div>

@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const brushSizeValue = document.getElementById('brush-size-value');
     const colorPicker = document.getElementById('colorPicker');
     const clearCanvasBtn = document.getElementById('clear-canvas');
+    const undoBtn = document.getElementById('undo-btn'); // Assumes an undo button with this ID exists
+    const redoBtn = document.getElementById('redo-btn'); // Assumes a redo button with this ID exists
     const canvas = document.getElementById('sketchCanvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true }); // Optimization for getImageData
     
@@ -15,6 +17,49 @@ document.addEventListener('DOMContentLoaded', () => {
     let isDrawing = false;
     let lastX = 0;
     let lastY = 0;
+    let history = [];
+    let redoStack = [];
+
+    // --- History Management ---
+    function saveState() {
+        redoStack = []; // Clear the redo stack whenever a new action is taken
+        if (history.length > 30) { // Limit history to prevent memory issues
+            history.shift();
+        }
+        history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        updateUndoRedoButtons();
+    }
+
+    function restoreState(imageData) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.putImageData(imageData, 0, 0);
+        ctx.restore();
+    }
+
+    function undo() {
+        if (history.length > 1) { // Keep the initial blank state
+            redoStack.push(history.pop());
+            const prevState = history[history.length - 1];
+            restoreState(prevState);
+            updateUndoRedoButtons();
+        }
+    }
+
+    function redo() {
+        if (redoStack.length > 0) {
+            const nextState = redoStack.pop();
+            history.push(nextState);
+            restoreState(nextState);
+            updateUndoRedoButtons();
+        }
+    }
+    
+    function updateUndoRedoButtons() {
+        if (undoBtn) undoBtn.disabled = history.length <= 1;
+        if (redoBtn) redoBtn.disabled = redoStack.length === 0;
+    }
+
 
     // --- Canvas Setup ---
     function resizeCanvas() {
@@ -63,6 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activeTool === 'fill') {
             const mousePos = getMousePos(e);
             floodFill(Math.floor(mousePos.x), Math.floor(mousePos.y));
+            saveState(); // Save state after filling
         } else {
             startDrawing(e);
         }
@@ -89,8 +135,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function stopDrawing() {
+        if (!isDrawing) return;
         isDrawing = false;
         ctx.beginPath();
+        saveState(); // Save state after a brush stroke is completed
     }
     
     // --- Bucket Fill (Flood Fill) ---
@@ -191,11 +239,22 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.restore();
+            saveState(); // Save the cleared state
         });
     }
+
+    if (undoBtn) undoBtn.addEventListener('click', undo);
+    if (redoBtn) redoBtn.addEventListener('click', redo);
+
 
     // --- Initial Setup ---
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas(); // Initial size set
+    
+    // Save the initial blank state
+    saveState();
+    // Since this is the first state, the redo stack is empty, but we need to clear history for a clean start.
+    history = [history[history.length - 1]];
+    updateUndoRedoButtons();
 });
 
