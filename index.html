@@ -85,11 +85,13 @@
         </aside>
 
         <!-- Main Canvas Area -->
-        <main class="flex-1 bg-gray-800 p-4 flex items-center justify-center">
+        <main class="relative flex-1 bg-gray-800 p-4 flex items-center justify-center">
             <!-- The canvas will be controlled by JavaScript to fit the container -->
-            <canvas id="sketchCanvas" class="bg-white rounded-lg shadow-2xl w-full h-full" style="cursor: crosshair;">
+            <canvas id="sketchCanvas" class="bg-white rounded-lg shadow-2xl w-full h-full">
                 Your browser does not support the canvas element.
             </canvas>
+            <!-- Brush Preview Cursor -->
+            <div id="brush-preview" class="hidden"></div>
         </main>
     </div>
     <script src="script.js"></script>

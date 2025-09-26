@@ -6,10 +6,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const brushSizeValue = document.getElementById('brush-size-value');
     const colorPicker = document.getElementById('colorPicker');
     const clearCanvasBtn = document.getElementById('clear-canvas');
-    const undoBtn = document.getElementById('undo-btn'); // Assumes an undo button with this ID exists
-    const redoBtn = document.getElementById('redo-btn'); // Assumes a redo button with this ID exists
+    const undoBtn = document.getElementById('undo-btn');
+    const redoBtn = document.getElementById('redo-btn');
     const canvas = document.getElementById('sketchCanvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true }); // Optimization for getImageData
+    const brushPreview = document.getElementById('brush-preview'); // Get the new preview element
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     
     // --- State Variables ---
     const dpr = window.devicePixelRatio || 1;
@@ -22,8 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- History Management ---
     function saveState() {
-        redoStack = []; // Clear the redo stack whenever a new action is taken
-        if (history.length > 30) { // Limit history to prevent memory issues
+        redoStack = [];
+        if (history.length > 30) {
             history.shift();
         }
         history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
@@ -38,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function undo() {
-        if (history.length > 1) { // Keep the initial blank state
+        if (history.length > 1) {
             redoStack.push(history.pop());
             const prevState = history[history.length - 1];
             restoreState(prevState);
@@ -63,7 +64,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Canvas Setup ---
     function resizeCanvas() {
-        // Save the current drawing to a temporary canvas
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
         if (canvas.width > 0 && canvas.height > 0) {
@@ -76,22 +76,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const newWidth = container.clientWidth;
         const newHeight = container.clientHeight;
 
-        // Set the canvas buffer size to match the device pixels
         canvas.width = newWidth * dpr;
         canvas.height = newHeight * dpr;
-
-        // Set the display size of the canvas using CSS
         canvas.style.width = `${newWidth}px`;
         canvas.style.height = `${newHeight}px`;
 
-        // Scale the drawing context to work with CSS pixels
         ctx.scale(dpr, dpr);
 
-        // Draw the saved image back onto the resized canvas
         if (tempCanvas.width > 0) {
-            // Draw the image back, scaling it to fit the new CSS dimensions
             ctx.drawImage(tempCanvas, 0, 0, newWidth, newHeight);
         }
+    }
+
+    // --- Brush Preview ---
+    function updateBrushPreviewSize() {
+        const brushSize = brushSizeSlider.value;
+        brushPreview.style.width = `${brushSize}px`;
+        brushPreview.style.height = `${brushSize}px`;
     }
     
     // --- Coordinate Calculation ---
@@ -108,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activeTool === 'fill') {
             const mousePos = getMousePos(e);
             floodFill(Math.floor(mousePos.x), Math.floor(mousePos.y));
-            saveState(); // Save state after filling
+            saveState();
         } else {
             startDrawing(e);
         }
@@ -138,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isDrawing) return;
         isDrawing = false;
         ctx.beginPath();
-        saveState(); // Save state after a brush stroke is completed
+        saveState();
     }
     
     // --- Bucket Fill (Flood Fill) ---
@@ -181,11 +182,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // CRITICAL FIX: Reset transform before putting image data back
         ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform to identity
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.putImageData(imageData, 0, 0);
-        ctx.restore(); // Restore the scaled transform
+        ctx.restore();
 
         function getPixelColor(x, y) {
             const index = (y * width + x) * 4;
@@ -216,8 +216,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // --- Event Listeners ---
+    canvas.addEventListener('mouseenter', () => {
+        brushPreview.classList.remove('hidden');
+        canvas.style.cursor = 'none';
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+        brushPreview.classList.add('hidden');
+        canvas.style.cursor = 'default';
+    });
+
     canvas.addEventListener('mousedown', handleCanvasClick);
-    canvas.addEventListener('mousemove', draw);
+
+    canvas.addEventListener('mousemove', (e) => {
+        // This single listener handles both drawing and updating the preview position
+        draw(e);
+        const mousePos = getMousePos(e);
+        brushPreview.style.left = `${mousePos.x}px`;
+        brushPreview.style.top = `${mousePos.y}px`;
+    });
+
     canvas.addEventListener('mouseup', stopDrawing);
     canvas.addEventListener('mouseout', stopDrawing);
 
@@ -231,6 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     brushSizeSlider.addEventListener('input', (e) => {
         brushSizeValue.textContent = e.target.value;
+        updateBrushPreviewSize(); // Update preview size when slider changes
     });
     
     if (clearCanvasBtn) {
@@ -239,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.restore();
-            saveState(); // Save the cleared state
+            saveState();
         });
     }
 
@@ -249,12 +268,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initial Setup ---
     window.addEventListener('resize', resizeCanvas);
-    resizeCanvas(); // Initial size set
+    resizeCanvas();
     
-    // Save the initial blank state
     saveState();
-    // Since this is the first state, the redo stack is empty, but we need to clear history for a clean start.
     history = [history[history.length - 1]];
     updateUndoRedoButtons();
+    updateBrushPreviewSize(); // Set initial size of the brush preview
 });
 
