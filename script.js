@@ -4,78 +4,198 @@ document.addEventListener('DOMContentLoaded', () => {
     const toolButtons = document.querySelectorAll('.tool-button');
     const brushSizeSlider = document.getElementById('brushSize');
     const brushSizeValue = document.getElementById('brush-size-value');
-    const gridSizeSlider = document.getElementById('gridSize');
-    const gridSizeValue = document.getElementById('grid-size-value');
-    const gridToggle = document.getElementById('gridToggle');
+    const colorPicker = document.getElementById('colorPicker');
+    const clearCanvasBtn = document.getElementById('clear-canvas');
     const canvas = document.getElementById('sketchCanvas');
-    const ctx = canvas.getContext('2d');
-
-    // --- State Variables ---
-    let activeTool = 'brush'; // Default tool
-    let isDrawing = false;
-    let showGrid = false;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true }); // Optimization for getImageData
     
+    // --- State Variables ---
+    const dpr = window.devicePixelRatio || 1;
+    let activeTool = 'brush';
+    let isDrawing = false;
+    let lastX = 0;
+    let lastY = 0;
+
     // --- Canvas Setup ---
-    // Function to resize canvas to fit its container
     function resizeCanvas() {
+        // Save the current drawing to a temporary canvas
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        if (canvas.width > 0 && canvas.height > 0) {
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCtx.drawImage(canvas, 0, 0);
+        }
+
         const container = canvas.parentElement;
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
+        const newWidth = container.clientWidth;
+        const newHeight = container.clientHeight;
+
+        // Set the canvas buffer size to match the device pixels
+        canvas.width = newWidth * dpr;
+        canvas.height = newHeight * dpr;
+
+        // Set the display size of the canvas using CSS
+        canvas.style.width = `${newWidth}px`;
+        canvas.style.height = `${newHeight}px`;
+
+        // Scale the drawing context to work with CSS pixels
+        ctx.scale(dpr, dpr);
+
+        // Draw the saved image back onto the resized canvas
+        if (tempCanvas.width > 0) {
+            // Draw the image back, scaling it to fit the new CSS dimensions
+            ctx.drawImage(tempCanvas, 0, 0, newWidth, newHeight);
+        }
+    }
+    
+    // --- Coordinate Calculation ---
+    function getMousePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
     }
 
-    // Initial resize and listen for window resizing
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    // --- Drawing Functions ---
+    function handleCanvasClick(e) {
+        if (activeTool === 'fill') {
+            const mousePos = getMousePos(e);
+            floodFill(Math.floor(mousePos.x), Math.floor(mousePos.y));
+        } else {
+            startDrawing(e);
+        }
+    }
 
+    function startDrawing(e) {
+        isDrawing = true;
+        const mousePos = getMousePos(e);
+        [lastX, lastY] = [mousePos.x, mousePos.y];
+    }
 
+    function draw(e) {
+        if (!isDrawing) return;
+        const mousePos = getMousePos(e);
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(mousePos.x, mousePos.y);
+        ctx.strokeStyle = activeTool === 'eraser' ? 'white' : colorPicker.value;
+        ctx.lineWidth = brushSizeSlider.value;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        [lastX, lastY] = [mousePos.x, mousePos.y];
+    }
+
+    function stopDrawing() {
+        isDrawing = false;
+        ctx.beginPath();
+    }
+    
+    // --- Bucket Fill (Flood Fill) ---
+    function floodFill(startX, startY) {
+        const fillColor = hexToRgb(colorPicker.value);
+        if (!fillColor) return;
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const { width, height, data } = imageData;
+        
+        const startX_scaled = Math.floor(startX * dpr);
+        const startY_scaled = Math.floor(startY * dpr);
+
+        const targetColor = getPixelColor(startX_scaled, startY_scaled);
+
+        if (colorsMatch(targetColor, fillColor)) {
+            return;
+        }
+
+        const queue = [[startX_scaled, startY_scaled]];
+        const visited = new Set([`${startX_scaled},${startY_scaled}`]);
+        
+        while (queue.length > 0) {
+            const [x, y] = queue.shift();
+            if (x < 0 || x >= width || y < 0 || y >= height) continue;
+
+            const currentColor = getPixelColor(x, y);
+
+            if (colorsMatch(currentColor, targetColor)) {
+                setPixelColor(x, y, fillColor);
+                
+                const neighbors = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+                for (const [nx, ny] of neighbors) {
+                    const key = `${nx},${ny}`;
+                    if (!visited.has(key)) {
+                        queue.push([nx, ny]);
+                        visited.add(key);
+                    }
+                }
+            }
+        }
+        
+        // CRITICAL FIX: Reset transform before putting image data back
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform to identity
+        ctx.putImageData(imageData, 0, 0);
+        ctx.restore(); // Restore the scaled transform
+
+        function getPixelColor(x, y) {
+            const index = (y * width + x) * 4;
+            return { r: data[index], g: data[index + 1], b: data[index + 2], a: data[index + 3] };
+        }
+
+        function setPixelColor(x, y, color) {
+            const index = (y * width + x) * 4;
+            data[index] = color.r;
+            data[index + 1] = color.g;
+            data[index + 2] = color.b;
+            data[index + 3] = 255;
+        }
+    }
+    
+    // --- Helper Functions ---
+    function hexToRgb(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : null;
+    }
+
+    function colorsMatch(c1, c2) {
+        return c1.r === c2.r && c1.g === c2.g && c1.b === c2.b && c1.a === c2.a;
+    }
+    
     // --- Event Listeners ---
+    canvas.addEventListener('mousedown', handleCanvasClick);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
 
-    // 1. Tool selection
     toolButtons.forEach(button => {
         button.addEventListener('click', () => {
-            // Remove 'active' class from any currently active button
-            const currentActive = document.querySelector('.tool-button.active');
-            if(currentActive) {
-                currentActive.classList.remove('active');
-            }
-            
-            // Add 'active' class to the clicked button
+            document.querySelector('.tool-button.active')?.classList.remove('active');
             button.classList.add('active');
-            
-            // Update the active tool
             activeTool = button.id;
-            console.log(`Active tool changed to: ${activeTool}`);
         });
     });
 
-    // 2. Brush size slider
     brushSizeSlider.addEventListener('input', (e) => {
-        const newSize = e.target.value;
-        brushSizeValue.textContent = newSize;
+        brushSizeValue.textContent = e.target.value;
     });
+    
+    if (clearCanvasBtn) {
+        clearCanvasBtn.addEventListener('click', () => {
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.restore();
+        });
+    }
 
-    // 3. Grid size slider
-    gridSizeSlider.addEventListener('input', (e) => {
-        const newSize = e.target.value;
-        gridSizeValue.textContent = newSize;
-        // In the future, this will be used by the function that draws the grid
-        // If the grid is already visible, we might want to redraw it
-        if(showGrid) {
-            console.log('Grid size changed, redraw grid here.');
-        }
-    });
-
-    // 4. Grid visibility toggle
-    gridToggle.addEventListener('change', (e) => {
-        showGrid = e.target.checked;
-        if (showGrid) {
-            console.log('Grid is now ON');
-            // Future: Call a function to draw the grid on the canvas
-        } else {
-            console.log('Grid is now OFF');
-            // Future: Call a function to clear the grid and redraw the canvas
-        }
-    });
-
+    // --- Initial Setup ---
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas(); // Initial size set
 });
 

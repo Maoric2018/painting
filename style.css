@@ -64,5 +64,24 @@ input[type="range"]::-moz-range-thumb {
 /* Simple CSS for the toggle switch */
 input:checked ~ .dot {
     transform: translateX(100%);
+}
+
+input:checked ~ .block {
+    background-color: #6366F1; indigo-500
+}
+
+/* Tool Button Styling */
+.tool-button {
+    background-color: #374151; /* gray-700 */
+    color: #D1D5DB; /* gray-300 */
+}
+
+.tool-button:hover {
+    background-color: #4B5563; /* gray-600 */
+}
+
+.tool-button.active {
     background-color: #6366F1; /* indigo-500 */
+    color: white;
+    box-shadow: 0 0 0 2px #4338ca inset; /* focus ring effect */
 }
