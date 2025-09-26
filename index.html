@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SketchPad - Online Drawing Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-gray-800 text-gray-200">
+
+    <div class="flex flex-col md:flex-row h-screen w-screen">
+        
+        <!-- Toolbar Section -->
+        <aside class="w-full md:w-72 bg-gray-900 p-4 md:p-6 shadow-lg flex flex-col space-y-6 overflow-y-auto">
+            <header class="text-center">
+                <h1 class="text-2xl font-bold text-indigo-400">SketchPad</h1>
+                <p class="text-sm text-gray-400">Your digital canvas</p>
+            </header>
+            
+            <div class="border-t border-gray-700"></div>
+
+            <!-- Color Selection -->
+            <div class="space-y-2">
+                <label for="colorPicker" class="text-sm font-medium text-gray-400">Color</label>
+                <div class="color-picker-wrapper">
+                    <input type="color" id="colorPicker" value="#6366F1" class="w-full h-10">
+                </div>
+            </div>
+
+            <!-- Brush Size -->
+            <div class="space-y-2">
+                <div class="flex justify-between items-center">
+                    <label for="brushSize" class="text-sm font-medium text-gray-400">Brush Size</label>
+                    <span class="text-sm text-white font-semibold">10</span>
+                </div>
+                <input type="range" id="brushSize" min="1" max="100" value="10" class="w-full">
+            </div>
+
+            <!-- Tools -->
+            <div class="space-y-3">
+                <label class="text-sm font-medium text-gray-400">Tools</label>
+                <div class="grid grid-cols-2 gap-3">
+                    <!-- Brush Tool -->
+                    <button class="flex items-center justify-center space-x-2 bg-indigo-500 text-white p-3 rounded-lg shadow-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-indigo-400 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                        <span>Brush</span>
+                    </button>
+                    <!-- Eraser Tool -->
+                    <button class="flex items-center justify-center space-x-2 bg-gray-700 p-3 rounded-lg shadow-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500 transition-colors">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21H7Z"/><path d="M22 21H7"/><path d="m5 12 5 5"/></svg>
+                        <span>Eraser</span>
+                    </button>
+                    <!-- Bucket Tool -->
+                    <button class="flex items-center justify-center space-x-2 bg-gray-700 p-3 rounded-lg shadow-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-gray-500 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 8 8L9.07 3.54a2.78 2.78 0 0 0-4.24 0l-1.6 1.6a2.78 2.78 0 0 0 0 4.24Z"/><path d="m11 13 6 6"/></svg>
+                        <span>Fill</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Grid Controls -->
+            <div class="space-y-3 pt-2">
+                 <label class="text-sm font-medium text-gray-400">Grid Options</label>
+                <div class="flex items-center justify-between bg-gray-800 p-3 rounded-lg">
+                    <label for="gridToggle" class="flex items-center cursor-pointer">
+                        <div class="relative">
+                            <input type="checkbox" id="gridToggle" class="sr-only">
+                            <div class="block bg-gray-600 w-10 h-6 rounded-full"></div>
+                            <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
+                        </div>
+                        <div class="ml-3 text-gray-200">
+                            Show Grid
+                        </div>
+                    </label>
+                </div>
+                 <div class="space-y-2">
+                    <div class="flex justify-between items-center">
+                        <label for="gridSize" class="text-sm font-medium text-gray-400">Grid Size</label>
+                        <span class="text-sm text-white font-semibold">20</span>
+                    </div>
+                    <input type="range" id="gridSize" min="5" max="100" value="20" step="5" class="w-full">
+                </div>
+            </div>
+
+            <!-- Spacer to push clear button to bottom -->
+            <div class="flex-grow"></div>
+
+            <!-- Clear Canvas Button -->
+            <div>
+                <button class="w-full flex items-center justify-center space-x-2 bg-red-600 text-white p-3 rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                    <span>Clear Canvas</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Canvas Area -->
+        <main class="flex-1 bg-gray-800 p-4 flex items-center justify-center">
+            <!-- The canvas will be controlled by JavaScript to fit the container -->
+            <canvas id="sketchCanvas" class="bg-white rounded-lg shadow-2xl w-full h-full" style="cursor: crosshair;">
+                Your browser does not support the canvas element.
+            </canvas>
+        </main>
+    </div>
+    <script src="script.js"></script>
+
+</body>
+</html>
+
