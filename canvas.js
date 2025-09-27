@@ -31,8 +31,8 @@ export function resizeVisibleCanvas(elements) {
 export function redrawCanvas(elements) {
     const { ctx } = elements;
     ctx.save();
-    // Clear the visible canvas with the background color
-    ctx.fillStyle = '#1e293b'; // slate-800
+    // Clear the visible canvas with a white background to act as the "paper"
+    ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     
     applyTransform(); // Apply pan and zoom
@@ -167,6 +167,8 @@ function hexToRgba(hex) {
     let r = 0, g = 0, b = 0;
     if (hex.length == 4) {
         r = parseInt(hex[1] + hex[1], 16);
+        g = parseInt(hex[1] + hex[1], 16);
+        b = parseInt(hex[1] + hex[1], 16);
     } else if (hex.length == 7) {
         r = parseInt(hex.substring(1, 3), 16);
         g = parseInt(hex.substring(3, 5), 16);

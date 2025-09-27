@@ -32,9 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize history for the first layer
     initializeHistoryForLayer(initialLayer.id, initialLayer.ctx, initialLayer.canvas);
     
-    // Fill the first layer with a white background for a fresh start
-    initialLayer.ctx.fillStyle = 'white';
-    initialLayer.ctx.fillRect(0, 0, initialLayer.canvas.width, initialLayer.canvas.height);
+    // The initial layer is now transparent by default. The white background
+    // will come from the main canvas element in the HTML.
 
     redrawCanvas(elements);
     initializeUI(elements);
