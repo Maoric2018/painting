@@ -30,8 +30,8 @@ export function addNewLayer(width, height) {
     };
     
     layers.unshift(layer); // Add to top of the stack (top of the list)
-    renderLayerList(); // Full render for a new layer
-    setActiveLayer(id); // Set it as active after rendering
+    renderLayerList();
+    setActiveLayer(id);
     return layer;
 }
 
@@ -48,41 +48,33 @@ export function deleteActiveLayer() {
         if (layers[newActiveIndex]) {
            newActiveId = layers[newActiveIndex].id
         }
-        renderLayerList(); // Full render after deletion
-        setActiveLayer(newActiveId); // Set new active layer
+        renderLayerList();
+        setActiveLayer(newActiveId);
         return deletedLayer;
     }
     return null;
 }
 
-/**
- * Sets the active layer and efficiently updates the UI without a full re-render.
- * @param {number} id The ID of the layer to make active.
- */
 export function setActiveLayer(id) {
     if (activeLayerId === id) return;
 
     const listElement = document.getElementById('layers-list');
     if (!listElement) return;
 
-    // Un-style the previously active item
     const oldActiveItem = listElement.querySelector(`[data-layer-id="${activeLayerId}"]`);
     if (oldActiveItem) {
         oldActiveItem.classList.remove('bg-indigo-600', 'border-indigo-400');
         oldActiveItem.classList.add('bg-gray-700', 'border-transparent', 'hover:bg-gray-600');
     }
 
-    // Update the state
     activeLayerId = id;
 
-    // Style the new active item
     const newActiveItem = listElement.querySelector(`[data-layer-id="${id}"]`);
     if (newActiveItem) {
         newActiveItem.classList.remove('bg-gray-700', 'border-transparent', 'hover:bg-gray-600');
         newActiveItem.classList.add('bg-indigo-600', 'border-indigo-400');
     }
     
-    // Dispatch a custom event so other modules can react to the change.
     document.dispatchEvent(new CustomEvent('activelayerchanged'));
 }
 
@@ -132,6 +124,20 @@ export function resizeAllLayers(width, height) {
 export function getActiveLayer() {
     return layers.find(l => l.id === activeLayerId) || null;
 }
+
+/**
+ * Gets the dimensions of the offscreen drawing canvases.
+ * Assumes all layers have the same dimensions.
+ * @returns {{width: number, height: number}}
+ */
+export function getDrawingDimensions() {
+    if (layers.length > 0) {
+        const firstLayerCanvas = layers[0].canvas;
+        return { width: firstLayerCanvas.width, height: firstLayerCanvas.height };
+    }
+    return { width: 0, height: 0 };
+}
+
 
 export function updateActiveLayerThumbnail() {
     const activeLayer = getActiveLayer();
@@ -224,7 +230,6 @@ function createLayerItemElement(layer) {
         document.dispatchEvent(new CustomEvent('requestRedraw'));
     });
 
-    // --- Drag and Drop Event Listeners ---
     item.addEventListener('dragstart', handleDragStart);
     item.addEventListener('dragover', handleDragOver);
     item.addEventListener('dragleave', handleDragLeave);
@@ -233,8 +238,6 @@ function createLayerItemElement(layer) {
 
     return item;
 }
-
-// --- Drag and Drop Handler Functions ---
 
 function handleDragStart(e) {
     dragSrcElement = this;
@@ -251,7 +254,6 @@ function handleDragOver(e) {
     const rect = this.getBoundingClientRect();
     const midpoint = rect.top + rect.height / 2;
     
-    // Clean up previous indicators from OTHER elements
     document.querySelectorAll('.layer-item').forEach(item => {
         if (item !== this) {
             item.classList.remove('drop-above', 'drop-below');
@@ -283,7 +285,6 @@ function handleDrop(e) {
         const dropBelow = this.classList.contains('drop-below');
         const [removed] = layers.splice(srcIndex, 1);
         
-        // After removing, the targetIndex might have shifted
         if (srcIndex < targetIndex) {
             targetIndex--;
         }
@@ -291,17 +292,14 @@ function handleDrop(e) {
         const insertIndex = dropBelow ? targetIndex + 1 : targetIndex;
         layers.splice(insertIndex, 0, removed);
         
-        // Immediately redraw the main canvas to reflect the new layer order
         document.dispatchEvent(new CustomEvent('requestRedraw'));
     }
 }
 
 function handleDragEnd(e) {
-    // Clean up all visual indicators and re-render the list
     document.querySelectorAll('.layer-item').forEach(item => {
         item.classList.remove('dragging', 'drop-above', 'drop-below');
     });
-    // Finally, re-render the list to ensure its state is consistent with the data array.
     renderLayerList();
 }
 

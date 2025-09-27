@@ -1,7 +1,7 @@
 // --- This module now handles drawing operations on a given layer context and compositing layers ---
 
 import { applyTransform } from './viewport.js';
-import { compositeLayers } from './layers.js';
+import { compositeLayers, getDrawingDimensions } from './layers.js';
 
 // --- State Variables for Drawing ---
 let isDrawing = false;
@@ -24,21 +24,38 @@ export function resizeVisibleCanvas(elements) {
 }
 
 /**
- * The main render loop. Clears the visible canvas, applies transformations,
- * and composites all layers onto it.
+ * The main render loop. It now creates a "desk" and "paper" effect.
  * @param {object} elements - The application's DOM elements.
  */
 export function redrawCanvas(elements) {
     const { ctx } = elements;
+    const drawingDims = getDrawingDimensions();
+
     ctx.save();
-    // Clear the visible canvas with a white background to act as the "paper"
-    ctx.fillStyle = 'white';
+    // Ensure transformations from the previous frame are cleared.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // 1. Clear the entire visible canvas with a dark "desk" color.
+    // This color (Tailwind's slate-700) will be visible around the paper when zoomed out.
+    ctx.fillStyle = '#334155';
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     
-    applyTransform(); // Apply pan and zoom
-    compositeLayers(ctx); // Draw all layers onto the transformed context
+    // 2. Apply the current pan and zoom transformation.
+    applyTransform();
+
+    // 3. Draw the white "paper" background for the artwork.
+    // This rectangle exists in the "world" space and will be scaled and moved by the transform.
+    if (drawingDims.width > 0 && drawingDims.height > 0) {
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, drawingDims.width, drawingDims.height);
+    }
+
+    // 4. Composite all visible layers on top of the paper.
+    compositeLayers(ctx);
+    
     ctx.restore();
 }
+
 
 /**
  * Main handler for mouse clicks on the canvas. Decides whether to fill or start drawing.
