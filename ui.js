@@ -123,7 +123,7 @@ export function initializeUI(elements) {
         if (!activeLayer) return;
         undo(activeLayer.id, activeLayer.ctx);
         updateUndoRedoButtons();
-        updateActiveLayerThumbnail(); // FIX: Update preview after undo
+        updateActiveLayerThumbnail();
         fullRedraw();
     });
 
@@ -132,16 +132,14 @@ export function initializeUI(elements) {
         if (!activeLayer) return;
         redo(activeLayer.id, activeLayer.ctx);
         updateUndoRedoButtons();
-        updateActiveLayerThumbnail(); // FIX: Update preview after redo
+        updateActiveLayerThumbnail();
         fullRedraw();
     });
 
     addLayerBtn.addEventListener('click', () => {
         const newLayer = addNewLayer(canvas.width, canvas.height);
         initializeHistoryForLayer(newLayer.id, newLayer.ctx, newLayer.canvas);
-        setContexts(elements.ctx, newLayer.ctx);
-        updateUndoRedoButtons();
-        fullRedraw();
+        // setActiveLayer in layers.js will fire the event to update context and buttons
     });
 
     deleteLayerBtn.addEventListener('click', () => {
@@ -150,22 +148,17 @@ export function initializeUI(elements) {
             if (confirm('Are you sure you want to delete this layer? This action cannot be undone.')) {
                 deleteHistoryForLayer(layerToDelete.id);
                 deleteActiveLayer();
-                const newActiveLayer = getActiveLayer();
-                if (newActiveLayer) {
-                    setContexts(elements.ctx, newActiveLayer.ctx);
-                }
-                updateUndoRedoButtons();
-                fullRedraw();
             }
         }
     });
     
-    document.getElementById('layers-list').addEventListener('click', () => {
+    // Listen for the custom event fired when the active layer changes
+    document.addEventListener('activelayerchanged', () => {
         const newActiveLayer = getActiveLayer();
         if (newActiveLayer) {
             setContexts(elements.ctx, newActiveLayer.ctx);
-            updateUndoRedoButtons();
         }
+        updateUndoRedoButtons();
     });
 
     // Custom event listener to redraw the main canvas when layer visibility or order changes.
@@ -187,7 +180,7 @@ export function initializeUI(elements) {
         if (activeLayer) {
             saveState(activeLayer.id, activeLayer.ctx, activeLayer.canvas);
             updateUndoRedoButtons();
-            updateActiveLayerThumbnail(); // FIX: Update preview after drawing
+            updateActiveLayerThumbnail();
         }
     }
     
