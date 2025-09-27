@@ -95,6 +95,28 @@ export function getActiveLayer() {
     return layers.find(l => l.id === activeLayerId) || null;
 }
 
+/**
+ * Updates the thumbnail preview for the currently active layer.
+ * This is called after any drawing action to keep the UI in sync.
+ */
+export function updateActiveLayerThumbnail() {
+    const activeLayer = getActiveLayer();
+    if (!activeLayer) return;
+
+    const listElement = document.getElementById('layers-list');
+    const layerItem = listElement.querySelector(`[data-layer-id="${activeLayer.id}"]`);
+
+    if (layerItem) {
+        const previewCanvas = layerItem.querySelector('.layer-preview');
+        if (previewCanvas) {
+            const previewCtx = previewCanvas.getContext('2d');
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            // Draw the full-size layer canvas onto the small preview canvas
+            previewCtx.drawImage(activeLayer.canvas, 0, 0, previewCanvas.width, previewCanvas.height);
+        }
+    }
+}
+
 // --- UI Rendering and Drag & Drop ---
 
 function renderLayerList() {

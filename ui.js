@@ -2,7 +2,7 @@
 import { handleCanvasClick, draw, stopDrawing, redrawCanvas } from './canvas.js';
 import { saveState, undo, redo, getHistoryLength, getRedoStackLength, initializeHistoryForLayer, deleteHistoryForLayer } from './history.js';
 import { getTransformedPoint, zoomOnWheel, startPan, stopPan, pan, getZoom, setContexts } from './viewport.js';
-import { addNewLayer, deleteActiveLayer, getActiveLayer } from './layers.js';
+import { addNewLayer, deleteActiveLayer, getActiveLayer, updateActiveLayerThumbnail } from './layers.js';
 
 let activeTool = 'brush';
 
@@ -72,7 +72,6 @@ export function initializeUI(elements) {
         const parentRect = canvas.parentElement.getBoundingClientRect();
         const mouseXInParent = e.clientX - parentRect.left;
         const mouseYInParent = e.clientY - parentRect.top;
-        const previewSize = parseFloat(brushPreview.style.width) || (brushSizeSlider.value * getZoom());
         brushPreview.style.left = `${mouseXInParent}px`;
         brushPreview.style.top = `${mouseYInParent}px`;
 
@@ -124,6 +123,7 @@ export function initializeUI(elements) {
         if (!activeLayer) return;
         undo(activeLayer.id, activeLayer.ctx);
         updateUndoRedoButtons();
+        updateActiveLayerThumbnail(); // FIX: Update preview after undo
         fullRedraw();
     });
 
@@ -132,6 +132,7 @@ export function initializeUI(elements) {
         if (!activeLayer) return;
         redo(activeLayer.id, activeLayer.ctx);
         updateUndoRedoButtons();
+        updateActiveLayerThumbnail(); // FIX: Update preview after redo
         fullRedraw();
     });
 
@@ -159,7 +160,6 @@ export function initializeUI(elements) {
         }
     });
     
-    // Listen for layer changes to update contexts and buttons
     document.getElementById('layers-list').addEventListener('click', () => {
         const newActiveLayer = getActiveLayer();
         if (newActiveLayer) {
@@ -167,6 +167,9 @@ export function initializeUI(elements) {
             updateUndoRedoButtons();
         }
     });
+
+    // Custom event listener to redraw the main canvas when layer visibility or order changes.
+    document.addEventListener('requestRedraw', fullRedraw);
 
     function updateUndoRedoButtons() {
         const activeLayer = getActiveLayer();
@@ -184,6 +187,7 @@ export function initializeUI(elements) {
         if (activeLayer) {
             saveState(activeLayer.id, activeLayer.ctx, activeLayer.canvas);
             updateUndoRedoButtons();
+            updateActiveLayerThumbnail(); // FIX: Update preview after drawing
         }
     }
     
