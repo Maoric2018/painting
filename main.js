@@ -1,49 +1,56 @@
-import { initializeHistory } from './history.js';
-import { resizeCanvases, redrawCanvas } from './canvas.js';
+import { initializeHistoryForLayer } from './history.js';
+import { redrawCanvas, resizeVisibleCanvas } from './canvas.js';
 import { initializeUI } from './ui.js';
+import { setContexts } from './viewport.js';
+import { initializeLayers, resizeAllLayers, getActiveLayer } from './layers.js';
 
 document.addEventListener('DOMContentLoaded', () => {
-    // A single place to gather all the HTML elements the application needs.
+    // --- Element Selections ---
     const elements = {
         toolButtons: document.querySelectorAll('.tool-button'),
         brushSizeSlider: document.getElementById('brushSize'),
         brushSizeValue: document.getElementById('brush-size-value'),
         colorPicker: document.getElementById('colorPicker'),
-        clearCanvasBtn: document.getElementById('clear-canvas'),
         undoBtn: document.getElementById('undo-btn'),
         redoBtn: document.getElementById('redo-btn'),
         canvas: document.getElementById('sketchCanvas'),
         canvasContainer: document.getElementById('canvas-container'),
         brushPreview: document.getElementById('brush-preview'),
-        ctx: document.getElementById('sketchCanvas').getContext('2d'),
-        
-        // Offscreen canvas for actual drawing data.
-        drawingCanvas: document.createElement('canvas'),
+        addLayerBtn: document.getElementById('add-layer-btn'),
+        deleteLayerBtn: document.getElementById('delete-layer-btn'),
+        layersList: document.getElementById('layers-list'),
     };
-    elements.drawingCtx = elements.drawingCanvas.getContext('2d', { willReadFrequently: true });
+    elements.ctx = elements.canvas.getContext('2d');
     
     // --- Initial Setup ---
+    resizeVisibleCanvas(elements);
+    initializeLayers(elements.canvas.width, elements.canvas.height);
     
-    // Set the initial canvas sizes.
-    resizeCanvases(elements);
+    const initialLayer = getActiveLayer();
+    setContexts(elements.ctx, initialLayer.ctx); // Set viewport contexts for the first layer
+
+    // Initialize history for the first layer
+    initializeHistoryForLayer(initialLayer.id, initialLayer.ctx, initialLayer.canvas);
     
-    // Fill the background of the offscreen drawing canvas with white.
-    elements.drawingCtx.fillStyle = 'white';
-    elements.drawingCtx.fillRect(0, 0, elements.drawingCanvas.width, elements.drawingCanvas.height);
-    
-    // Save the initial blank state to the history module.
-    initializeHistory(elements.drawingCtx, elements.drawingCanvas);
-    
-    // Perform the first draw to show the initial state on the visible canvas.
+    // Fill the first layer with a white background for a fresh start
+    initialLayer.ctx.fillStyle = 'white';
+    initialLayer.ctx.fillRect(0, 0, initialLayer.canvas.width, initialLayer.canvas.height);
+
     redrawCanvas(elements);
-    
-    // Connect all the UI elements (buttons, sliders) to their functions.
     initializeUI(elements);
     
-    // Add a listener to resize and redraw the canvas when the window changes.
+    // --- Global Event Listeners ---
     window.addEventListener('resize', () => {
-        resizeCanvases(elements);
-        redrawCanvas(elements);
+        const oldWidth = elements.canvas.width;
+        const oldHeight = elements.canvas.height;
+        resizeVisibleCanvas(elements);
+        if (oldWidth !== elements.canvas.width || oldHeight !== elements.canvas.height) {
+            resizeAllLayers(elements.canvas.width, elements.canvas.height);
+            redrawCanvas(elements);
+        }
     });
+
+    // Custom event listener to allow other modules to request a redraw
+    document.addEventListener('requestRedraw', () => redrawCanvas(elements));
 });
 
