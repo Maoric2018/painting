@@ -85,7 +85,7 @@ input[type="range"]::-moz-range-thumb {
     border-radius: 50%;
     pointer-events: none; /* Allows clicks to pass through */
     mix-blend-mode: difference; /* Helps visibility on any color */
-    transform: translate(-50%, -50%); /* Center on cursor */
+    transform: translate(-50%, -50%); /* Center on Cursor */
 }
 
 /* Canvas Cursors */
