@@ -57,7 +57,6 @@ export function deleteActiveLayer() {
 
 /**
  * Sets the active layer and efficiently updates the UI without a full re-render.
- * This is the core fix for the double-click issue.
  * @param {number} id The ID of the layer to make active.
  */
 export function setActiveLayer(id) {
@@ -174,7 +173,7 @@ function renderLayerList() {
 
 function createLayerItemElement(layer) {
     const item = document.createElement('div');
-    item.className = `layer-item p-2 rounded-md border-2 flex items-center space-x-3 ${layer.id === activeLayerId ? 'bg-indigo-600 border-indigo-400' : 'bg-gray-700 border-transparent hover:bg-gray-600'}`;
+    item.className = `layer-item p-2 rounded-md border-y-2 border-transparent flex items-center space-x-3 ${layer.id === activeLayerId ? 'bg-indigo-600' : 'bg-gray-700 hover:bg-gray-600'}`;
     item.dataset.layerId = layer.id;
     item.setAttribute('draggable', true);
 
@@ -189,12 +188,11 @@ function createLayerItemElement(layer) {
         </div>
     `;
 
-    // Event Listeners
     item.addEventListener('click', () => setActiveLayer(layer.id));
     
     const layerNameContainer = item.querySelector('.layer-name-container');
     layerNameContainer.addEventListener('dblclick', (e) => {
-        e.stopPropagation(); // Prevent click from firing on the item
+        e.stopPropagation();
         const layerNameSpan = item.querySelector('.layer-name');
         layerNameSpan.style.display = 'none';
 
@@ -215,7 +213,7 @@ function createLayerItemElement(layer) {
             if (keyEvent.key === 'Enter') {
                 finishRename();
             } else if (keyEvent.key === 'Escape') {
-                renderLayerList(); // Cancel rename and re-render
+                renderLayerList();
             }
         });
     });
@@ -226,43 +224,84 @@ function createLayerItemElement(layer) {
         document.dispatchEvent(new CustomEvent('requestRedraw'));
     });
 
+    // --- Drag and Drop Event Listeners ---
     item.addEventListener('dragstart', handleDragStart);
     item.addEventListener('dragover', handleDragOver);
+    item.addEventListener('dragleave', handleDragLeave);
     item.addEventListener('drop', handleDrop);
     item.addEventListener('dragend', handleDragEnd);
 
     return item;
 }
 
+// --- Drag and Drop Handler Functions ---
+
 function handleDragStart(e) {
     dragSrcElement = this;
     e.dataTransfer.effectAllowed = 'move';
-    this.classList.add('dragging');
+    setTimeout(() => {
+        this.classList.add('dragging');
+    }, 0);
 }
 
 function handleDragOver(e) {
     e.preventDefault();
-    return false;
+    if (this === dragSrcElement) return;
+
+    const rect = this.getBoundingClientRect();
+    const midpoint = rect.top + rect.height / 2;
+    
+    // Clean up previous indicators from OTHER elements
+    document.querySelectorAll('.layer-item').forEach(item => {
+        if (item !== this) {
+            item.classList.remove('drop-above', 'drop-below');
+        }
+    });
+
+    if (e.clientY < midpoint) {
+        this.classList.add('drop-above');
+        this.classList.remove('drop-below');
+    } else {
+        this.classList.add('drop-below');
+        this.classList.remove('drop-above');
+    }
+}
+
+function handleDragLeave(e) {
+    this.classList.remove('drop-above', 'drop-below');
 }
 
 function handleDrop(e) {
     e.stopPropagation();
-    if (dragSrcElement !== this) {
+    if (dragSrcElement && dragSrcElement !== this) {
         const srcId = Number(dragSrcElement.dataset.layerId);
         const targetId = Number(this.dataset.layerId);
-        const srcIndex = layers.findIndex(l => l.id === srcId);
-        const targetIndex = layers.findIndex(l => l.id === targetId);
-
-        const [removed] = layers.splice(srcIndex, 1);
-        layers.splice(targetIndex, 0, removed);
         
-        renderLayerList();
+        let srcIndex = layers.findIndex(l => l.id === srcId);
+        let targetIndex = layers.findIndex(l => l.id === targetId);
+
+        const dropBelow = this.classList.contains('drop-below');
+        const [removed] = layers.splice(srcIndex, 1);
+        
+        // After removing, the targetIndex might have shifted
+        if (srcIndex < targetIndex) {
+            targetIndex--;
+        }
+        
+        const insertIndex = dropBelow ? targetIndex + 1 : targetIndex;
+        layers.splice(insertIndex, 0, removed);
+        
+        // Immediately redraw the main canvas to reflect the new layer order
         document.dispatchEvent(new CustomEvent('requestRedraw'));
     }
-    return false;
 }
 
-function handleDragEnd() {
-    this.classList.remove('dragging');
+function handleDragEnd(e) {
+    // Clean up all visual indicators and re-render the list
+    document.querySelectorAll('.layer-item').forEach(item => {
+        item.classList.remove('dragging', 'drop-above', 'drop-below');
+    });
+    // Finally, re-render the list to ensure its state is consistent with the data array.
+    renderLayerList();
 }
 

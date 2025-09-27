@@ -71,7 +71,7 @@ input[type="range"]::-moz-range-thumb {
 /* Layer Panel Styles */
 .layer-item {
     cursor: pointer;
-    transition: background-color 0.2s ease-in-out;
+    transition: background-color 0.2s ease-in-out, border-color 0.1s ease-in-out;
 }
 .layer-item .layer-preview {
     border: 1px solid #4B5563; /* gray-600 */
@@ -80,10 +80,20 @@ input[type="range"]::-moz-range-thumb {
 .visibility-toggle .eye-closed { display: none; }
 .visibility-toggle.hidden-layer .eye-open { display: none; }
 .visibility-toggle.hidden-layer .eye-closed { display: block; }
+
 .layer-item.dragging {
     opacity: 0.4;
     background-color: #4f46e5; /* indigo-700 */
 }
+
+/* Drop Indicator Styles */
+.layer-item.drop-above {
+    border-top-color: #a78bfa; /* violet-400 */
+}
+.layer-item.drop-below {
+    border-bottom-color: #a78bfa; /* violet-400 */
+}
+
 .layer-name-input {
     width: 100%;
     background-color: #1F2937; /* gray-800 */
