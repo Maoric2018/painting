@@ -67,6 +67,7 @@ input[type="range"]::-moz-range-thumb {
 .pan-cursor { cursor: grab; }
 .panning-cursor { cursor: grabbing; }
 .no-cursor { cursor: none; }
+.move-cursor { cursor: move; }
 
 /* Layer Panel Styles */
 .layer-item {

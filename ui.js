@@ -3,8 +3,10 @@ import { handleCanvasClick, draw, stopDrawing, redrawCanvas } from './canvas.js'
 import { saveState, undo, redo, getHistoryLength, getRedoStackLength, initializeHistoryForLayer, deleteHistoryForLayer } from './history.js';
 import { getTransformedPoint, zoomOnWheel, startPan, stopPan, pan, getZoom, setContexts } from './viewport.js';
 import { addNewLayer, deleteActiveLayer, getActiveLayer, updateActiveLayerThumbnail } from './layers.js';
+import { startSelection, addPointToSelection, endSelection, getSelectionState, clearSelection, pasteSelection, startMove, moveSelection, isPointInSelection } from './selection.js';
 
 let activeTool = 'brush';
+let isInteracting = false; // A general flag for mouse down on canvas
 
 /**
  * Initializes all UI event listeners.
@@ -12,19 +14,36 @@ let activeTool = 'brush';
  */
 export function initializeUI(elements) {
     const { toolButtons, brushSizeSlider, brushSizeValue, undoBtn, redoBtn, canvas, brushPreview, colorPicker, addLayerBtn, deleteLayerBtn } = elements;
+    
+    function animationLoop() {
+        redrawCanvas(elements);
+        requestAnimationFrame(animationLoop);
+    }
+    animationLoop();
 
     const fullRedraw = () => redrawCanvas(elements);
     
-    function updateCursor() {
-        canvas.classList.remove('pan-cursor', 'panning-cursor', 'no-cursor', 'default-cursor');
+    function updateCursor(e) {
+        const currentClasses = canvas.className;
+        let newCursorClass = 'default-cursor';
+        brushPreview.classList.add('hidden');
+
+        const selection = getSelectionState();
+        const transformedPoint = getTransformedPoint(e.clientX - canvas.getBoundingClientRect().left, e.clientY - canvas.getBoundingClientRect().top);
+
         if (activeTool === 'pan') {
-            brushPreview.classList.add('hidden');
-            canvas.classList.add('pan-cursor');
-        } else if (['brush', 'eraser', 'fill'].includes(activeTool)) {
+            newCursorClass = isInteracting ? 'panning-cursor' : 'pan-cursor';
+        } else if (activeTool === 'move' && selection.isFloating) {
+            if (isPointInSelection(transformedPoint.x, transformedPoint.y)) {
+                newCursorClass = 'move-cursor';
+            }
+        } else if (['brush', 'eraser'].includes(activeTool)) {
             brushPreview.classList.remove('hidden');
-            canvas.classList.add('no-cursor');
-        } else {
-            canvas.classList.add('default-cursor');
+            newCursorClass = 'no-cursor';
+        }
+        
+        if (!currentClasses.includes(newCursorClass)) {
+            canvas.className = 'w-full h-full bg-white rounded-md shadow-inner ' + newCursorClass;
         }
     }
 
@@ -34,67 +53,124 @@ export function initializeUI(elements) {
         brushPreview.style.height = `${size}px`;
     }
     
+    /**
+     * Commits the current floating selection to the active layer, saves history, and clears the selection state.
+     */
+    function commitSelection() {
+        const selection = getSelectionState();
+        if (!selection.isFloating) {
+            clearSelection();
+            return;
+        }
+
+        const activeLayer = getActiveLayer();
+        if (activeLayer) {
+            pasteSelection(activeLayer.ctx);
+            clearSelection();
+            onDrawEnd();
+        } else {
+            clearSelection();
+        }
+    }
+
+    // --- Global Event Listener for Keys ---
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Enter') {
+            if (getSelectionState().isFloating) {
+                commitSelection();
+                e.preventDefault();
+            }
+        }
+    });
+
     // --- Canvas Event Listeners ---
-    canvas.addEventListener('mouseenter', () => updateCursor());
-    
+    canvas.addEventListener('mouseenter', (e) => updateCursor(e));
     canvas.addEventListener('mouseleave', () => {
         brushPreview.classList.add('hidden');
-        stopDrawing(() => onDrawEnd());
+        if (isInteracting) {
+            if (activeTool === 'lasso' && getSelectionState().isDrawing) {
+                const activeLayer = getActiveLayer();
+                if (activeLayer) endSelection(activeLayer.ctx);
+            }
+            stopDrawing(() => onDrawEnd());
+            isInteracting = false;
+        }
     });
 
     canvas.addEventListener('mousedown', (e) => {
+        isInteracting = true;
+        const activeLayer = getActiveLayer();
+        if (!activeLayer) { isInteracting = false; return; }
+
+        const transformedPoint = getTransformedPoint(e.clientX - canvas.getBoundingClientRect().left, e.clientY - canvas.getBoundingClientRect().top);
+        const selection = getSelectionState();
+
         if (activeTool === 'pan') {
             startPan(e);
-            canvas.classList.replace('pan-cursor', 'panning-cursor');
-            return;
+        } else if (activeTool === 'lasso') {
+            if (selection.isFloating && !isPointInSelection(transformedPoint.x, transformedPoint.y)) {
+                commitSelection();
+            }
+            startSelection(transformedPoint.x, transformedPoint.y, commitSelection);
+        } else if (activeTool === 'move') {
+            if (selection.isFloating) {
+                if (isPointInSelection(transformedPoint.x, transformedPoint.y)) {
+                    startMove(transformedPoint.x, transformedPoint.y);
+                } else {
+                    commitSelection();
+                }
+            }
+        } else { // Brush, Eraser, Fill
+            const state = { activeLayer, activeTool, colorPicker, brushSizeSlider };
+            handleCanvasClick(transformedPoint.x, transformedPoint.y, state, () => onDrawEnd());
         }
-        
-        const activeLayer = getActiveLayer();
-        if (!activeLayer) return;
-
-        const state = { activeLayer, activeTool, colorPicker, brushSizeSlider };
-        
-        const canvasRect = canvas.getBoundingClientRect();
-        const mouseXInCanvas = e.clientX - canvasRect.left;
-        const mouseYInCanvas = e.clientY - canvasRect.top;
-        
-        const transformedPoint = getTransformedPoint(mouseXInCanvas, mouseYInCanvas);
-        handleCanvasClick(transformedPoint.x, transformedPoint.y, state, () => onDrawEnd());
-        fullRedraw();
+        updateCursor(e);
     });
 
     canvas.addEventListener('mousemove', (e) => {
+        const parentRect = canvas.parentElement.getBoundingClientRect();
+        brushPreview.style.left = `${e.clientX - parentRect.left}px`;
+        brushPreview.style.top = `${e.clientY - parentRect.top}px`;
+        updateCursor(e);
+
+        if (!isInteracting) return;
+        
+        const transformedPoint = getTransformedPoint(e.clientX - canvas.getBoundingClientRect().left, e.clientY - canvas.getBoundingClientRect().top);
+
         if (activeTool === 'pan') {
             pan(e, fullRedraw);
             return;
         }
-
-        const parentRect = canvas.parentElement.getBoundingClientRect();
-        const mouseXInParent = e.clientX - parentRect.left;
-        const mouseYInParent = e.clientY - parentRect.top;
-        brushPreview.style.left = `${mouseXInParent}px`;
-        brushPreview.style.top = `${mouseYInParent}px`;
-
-        const canvasRect = canvas.getBoundingClientRect();
-        const mouseXInCanvas = e.clientX - canvasRect.left;
-        const mouseYInCanvas = e.clientY - canvasRect.top;
         
         const activeLayer = getActiveLayer();
         if (!activeLayer) return;
-        
-        const state = { activeLayer, activeTool, colorPicker, brushSizeSlider };
-        const transformedPoint = getTransformedPoint(mouseXInCanvas, mouseYInCanvas);
-        draw(transformedPoint.x, transformedPoint.y, state);
-        fullRedraw();
+
+        if (activeTool === 'lasso') {
+            addPointToSelection(transformedPoint.x, transformedPoint.y);
+        } else if (activeTool === 'move') {
+            moveSelection(transformedPoint.x, transformedPoint.y);
+        } else {
+            const state = { activeLayer, activeTool, colorPicker, brushSizeSlider };
+            draw(transformedPoint.x, transformedPoint.y, state);
+        }
     });
     
-    canvas.addEventListener('mouseup', () => {
+    canvas.addEventListener('mouseup', (e) => {
+        if (!isInteracting) return;
+        isInteracting = false;
+
+        const activeLayer = getActiveLayer();
         if (activeTool === 'pan') {
             stopPan();
-            canvas.classList.replace('panning-cursor', 'pan-cursor');
-            return;
+        } else if (activeTool === 'lasso') {
+            if (activeLayer) {
+                endSelection(activeLayer.ctx);
+                onDrawEnd(); // Save history for the clear action
+            }
+        } else if (['brush', 'eraser', 'fill'].includes(activeTool)) {
+            stopDrawing(() => onDrawEnd());
         }
-        stopDrawing(() => onDrawEnd());
+        updateCursor(e);
     });
 
     canvas.addEventListener('wheel', (e) => {
@@ -105,11 +181,11 @@ export function initializeUI(elements) {
 
     // --- Toolbar & Layer Panel Event Listeners ---
     toolButtons.forEach(button => {
-        button.addEventListener('click', () => {
+        button.addEventListener('click', (e) => {
             document.querySelector('.tool-button.active')?.classList.remove('active');
             button.classList.add('active');
             activeTool = button.id;
-            updateCursor();
+            updateCursor(e);
         });
     });
 
@@ -124,7 +200,6 @@ export function initializeUI(elements) {
         undo(activeLayer.id, activeLayer.ctx);
         updateUndoRedoButtons();
         updateActiveLayerThumbnail();
-        fullRedraw();
     });
 
     redoBtn.addEventListener('click', () => {
@@ -133,18 +208,17 @@ export function initializeUI(elements) {
         redo(activeLayer.id, activeLayer.ctx);
         updateUndoRedoButtons();
         updateActiveLayerThumbnail();
-        fullRedraw();
     });
 
     addLayerBtn.addEventListener('click', () => {
         const newLayer = addNewLayer(canvas.width, canvas.height);
         initializeHistoryForLayer(newLayer.id, newLayer.ctx, newLayer.canvas);
-        // setActiveLayer in layers.js will fire the event to update context and buttons
     });
 
     deleteLayerBtn.addEventListener('click', () => {
         const layerToDelete = getActiveLayer();
         if (layerToDelete) {
+            // Using a custom modal or alert would be better, but confirm is simple for now.
             if (confirm('Are you sure you want to delete this layer? This action cannot be undone.')) {
                 deleteHistoryForLayer(layerToDelete.id);
                 deleteActiveLayer();
@@ -152,7 +226,6 @@ export function initializeUI(elements) {
         }
     });
     
-    // Listen for the custom event fired when the active layer changes
     document.addEventListener('activelayerchanged', () => {
         const newActiveLayer = getActiveLayer();
         if (newActiveLayer) {
@@ -161,7 +234,6 @@ export function initializeUI(elements) {
         updateUndoRedoButtons();
     });
 
-    // Custom event listener to redraw the main canvas when layer visibility or order changes.
     document.addEventListener('requestRedraw', fullRedraw);
 
     function updateUndoRedoButtons() {
@@ -184,9 +256,5 @@ export function initializeUI(elements) {
         }
     }
     
-    // --- Initial State Calls ---
-    updateCursor();
-    updateBrushPreviewSize();
-    updateUndoRedoButtons();
+    updateUndoRedoButtons(); // Initial State Call
 }
-

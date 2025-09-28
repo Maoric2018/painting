@@ -2,11 +2,14 @@
 
 import { applyTransform } from './viewport.js';
 import { compositeLayers, getDrawingDimensions } from './layers.js';
+import { getSelectionState } from './selection.js';
 
 // --- State Variables for Drawing ---
 let isDrawing = false;
 let lastX = 0;
 let lastY = 0;
+let dashOffset = 0; // For marching ants animation
+const tempSelectionCanvas = document.createElement('canvas'); // Helper canvas for moving selections
 
 /**
  * Resizes the main visible canvas to fit its container and handles high-DPI scaling.
@@ -24,41 +27,91 @@ export function resizeVisibleCanvas(elements) {
 }
 
 /**
- * The main render loop. It now creates a "desk" and "paper" effect.
+ * The main render loop. It now creates a "desk" and "paper" effect and draws the selection outline.
  * @param {object} elements - The application's DOM elements.
  */
 export function redrawCanvas(elements) {
     const { ctx } = elements;
     const drawingDims = getDrawingDimensions();
+    const selection = getSelectionState();
 
     ctx.save();
-    // Ensure transformations from the previous frame are cleared.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // 1. Clear the entire visible canvas with a dark "desk" color.
-    // This color (Tailwind's slate-700) will be visible around the paper when zoomed out.
-    ctx.fillStyle = '#334155';
+    ctx.fillStyle = '#334155'; // 1. Clear with "desk" color.
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     
-    // 2. Apply the current pan and zoom transformation.
-    applyTransform();
+    applyTransform(); // 2. Apply pan and zoom.
 
-    // 3. Draw the white "paper" background for the artwork.
-    // This rectangle exists in the "world" space and will be scaled and moved by the transform.
-    if (drawingDims.width > 0 && drawingDims.height > 0) {
+    if (drawingDims.width > 0 && drawingDims.height > 0) { // 3. Draw "paper" background.
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, drawingDims.width, drawingDims.height);
     }
 
-    // 4. Composite all visible layers on top of the paper.
-    compositeLayers(ctx);
+    compositeLayers(ctx); // 4. Composite all layers.
+
+    if (selection.isFloating && selection.imageData) { // 5. Draw the floating selection image if it exists.
+        if (tempSelectionCanvas.width !== selection.imageData.width || tempSelectionCanvas.height !== selection.imageData.height) {
+            tempSelectionCanvas.width = selection.imageData.width;
+            tempSelectionCanvas.height = selection.imageData.height;
+            tempSelectionCanvas.getContext('2d').putImageData(selection.imageData, 0, 0);
+        }
+        ctx.drawImage(tempSelectionCanvas, selection.currentX, selection.currentY);
+    }
     
+    if (selection.path.length > 1) { // 6. Draw the selection path (marching ants).
+        const offsetX = selection.isFloating ? selection.currentX : 0;
+        const offsetY = selection.isFloating ? selection.currentY : 0;
+        const path = selection.path.map(p => ({ x: p.x + offsetX, y: p.y + offsetY }));
+        drawMarchingAnts(ctx, path, selection.isFloating || selection.isDrawing);
+    }
+    
+    ctx.restore();
+
+    dashOffset = (dashOffset + 1) % 16; // Animate the marching ants
+}
+
+function drawMarchingAnts(ctx, path, shouldClose = false) {
+    ctx.save();
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.lineDashOffset = -dashOffset;
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) {
+        ctx.lineTo(path[i].x, path[i].y);
+    }
+    if (shouldClose) {
+        ctx.closePath();
+    }
+    ctx.stroke();
     ctx.restore();
 }
 
+/**
+ * Applies a clipping mask to the context if a selection is active.
+ * @param {CanvasRenderingContext2D} ctx - The context to apply the clip to.
+ */
+function applySelectionClip(ctx) {
+    const selection = getSelectionState();
+    if (!selection.isFloating) return;
+
+    ctx.beginPath();
+    const path = selection.path;
+    const offsetX = selection.currentX;
+    const offsetY = selection.currentY;
+
+    ctx.moveTo(path[0].x + offsetX, path[0].y + offsetY);
+    for (let i = 1; i < path.length; i++) {
+        ctx.lineTo(path[i].x + offsetX, path[i].y + offsetY);
+    }
+    ctx.closePath();
+    ctx.clip();
+}
 
 /**
- * Main handler for mouse clicks on the canvas. Decides whether to fill or start drawing.
+ * Main handler for mouse clicks on the canvas.
  * @param {number} x - The transformed x-coordinate.
  * @param {number} y - The transformed y-coordinate.
  * @param {object} state - Contains the active layer context and tool info.
@@ -68,8 +121,6 @@ export function handleCanvasClick(x, y, state, onDrawEnd) {
     const { activeLayer, activeTool } = state;
     if (!activeLayer) return;
     
-    const ctx = activeLayer.ctx;
-
     isDrawing = true;
     lastX = x;
     lastY = y;
@@ -78,17 +129,16 @@ export function handleCanvasClick(x, y, state, onDrawEnd) {
         floodFill(x, y, state);
         onDrawEnd();
         isDrawing = false;
-    } else {
-        // For single-click dots with brush/eraser
+    } else if (['brush', 'eraser'].includes(activeTool)) {
         draw(x, y, state);
     }
 }
 
 /**
- * Draws a line from the last known position to the current position.
+ * Draws a line, respecting any active selection as a clipping mask.
  * @param {number} x - The current transformed x-coordinate.
  * @param {number} y - The current transformed y-coordinate.
- * @param {object} state - The current drawing state (layer, tool, color, brush size).
+ * @param {object} state - The current drawing state.
  */
 export function draw(x, y, state) {
     if (!isDrawing) return;
@@ -96,11 +146,14 @@ export function draw(x, y, state) {
     if (!activeLayer) return;
 
     const ctx = activeLayer.ctx;
+    
+    ctx.save();
+    applySelectionClip(ctx); // Apply clipping mask if selection exists
+
     ctx.beginPath();
     ctx.moveTo(lastX, lastY);
     ctx.lineTo(x, y);
 
-    // Eraser now uses destination-out to "erase" to transparency
     ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over';
     ctx.strokeStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : colorPicker.value;
     ctx.lineWidth = brushSizeSlider.value;
@@ -108,15 +161,11 @@ export function draw(x, y, state) {
     ctx.lineJoin = 'round';
     
     ctx.stroke();
-    
-    ctx.globalCompositeOperation = 'source-over'; // Reset composite operation
+    ctx.restore();
+
     [lastX, lastY] = [x, y];
 }
 
-/**
- * Sets the isDrawing flag to false and triggers the onDrawEnd callback.
- * @param {function} onDrawEnd - The callback to execute when drawing stops.
- */
 export function stopDrawing(onDrawEnd) {
     if (isDrawing) {
         isDrawing = false;
@@ -124,11 +173,13 @@ export function stopDrawing(onDrawEnd) {
     }
 }
 
-// --- Flood Fill Algorithm (Pixel-level manipulation) ---
 function floodFill(startX, startY, state) {
     const { activeLayer, colorPicker } = state;
     const ctx = activeLayer.ctx;
     const canvas = activeLayer.canvas;
+
+    ctx.save();
+    applySelectionClip(ctx); // Apply clipping mask
 
     const startX_scaled = Math.floor(startX);
     const startY_scaled = Math.floor(startY);
@@ -140,7 +191,10 @@ function floodFill(startX, startY, state) {
     const targetColor = getPixelColor(startX_scaled, startY_scaled, width, data);
     const fillColor = hexToRgba(colorPicker.value);
 
-    if (colorsMatch(targetColor, fillColor)) return;
+    if (colorsMatch(targetColor, fillColor)) {
+        ctx.restore();
+        return;
+    }
 
     const queue = [[startX_scaled, startY_scaled]];
 
@@ -156,6 +210,7 @@ function floodFill(startX, startY, state) {
         }
     }
     ctx.putImageData(imageData, 0, 0);
+    ctx.restore(); // Restore from clipping
 }
 
 function getPixelColor(x, y, width, data) {
@@ -172,7 +227,6 @@ function setPixelColor(x, y, color, width, data) {
 }
 
 function colorsMatch(c1, c2) {
-    // Tolerance for anti-aliased edges
     const threshold = 30;
     return Math.abs(c1.r - c2.r) < threshold &&
            Math.abs(c1.g - c2.g) < threshold &&
@@ -193,4 +247,3 @@ function hexToRgba(hex) {
     }
     return { r, g, b, a: 255 };
 }
-
