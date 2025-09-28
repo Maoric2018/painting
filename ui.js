@@ -23,10 +23,16 @@ export function initializeUI(elements) {
 
     const fullRedraw = () => redrawCanvas(elements);
     
-    function updateCursor(e) {
+    /**
+     * Updates the cursor style and brush preview based on the active tool and mouse position.
+     * @param {MouseEvent} e - The mouse event.
+     * @param {boolean} isOverCanvas - Whether the mouse is currently over the canvas.
+     */
+    function updateCursor(e, isOverCanvas = false) { // MODIFIED: Added isOverCanvas parameter
         const currentClasses = canvas.className;
         let newCursorClass = 'default-cursor';
-        brushPreview.classList.add('hidden');
+        // MODIFIED: Do not hide the preview by default here, to prevent flickering on mousemove.
+        // The mouseleave event is now solely responsible for hiding it.
 
         const selection = getSelectionState();
         const transformedPoint = getTransformedPoint(e.clientX - canvas.getBoundingClientRect().left, e.clientY - canvas.getBoundingClientRect().top);
@@ -38,7 +44,10 @@ export function initializeUI(elements) {
                 newCursorClass = 'move-cursor';
             }
         } else if (['brush', 'eraser'].includes(activeTool)) {
-            brushPreview.classList.remove('hidden');
+            // MODIFIED: Only show the preview if the cursor is over the canvas.
+            if (isOverCanvas) {
+                brushPreview.classList.remove('hidden');
+            }
             newCursorClass = 'no-cursor';
         }
         
@@ -85,7 +94,7 @@ export function initializeUI(elements) {
     });
 
     // --- Canvas Event Listeners ---
-    canvas.addEventListener('mouseenter', (e) => updateCursor(e));
+    canvas.addEventListener('mouseenter', (e) => updateCursor(e, true)); // MODIFIED: Pass true
     canvas.addEventListener('mouseleave', () => {
         brushPreview.classList.add('hidden');
         if (isInteracting) {
@@ -125,14 +134,14 @@ export function initializeUI(elements) {
             const state = { activeLayer, activeTool, colorPicker, brushSizeSlider };
             handleCanvasClick(transformedPoint.x, transformedPoint.y, state, () => onDrawEnd());
         }
-        updateCursor(e);
+        updateCursor(e, true); // MODIFIED: Pass true
     });
 
     canvas.addEventListener('mousemove', (e) => {
         const parentRect = canvas.parentElement.getBoundingClientRect();
         brushPreview.style.left = `${e.clientX - parentRect.left}px`;
         brushPreview.style.top = `${e.clientY - parentRect.top}px`;
-        updateCursor(e);
+        updateCursor(e, true); // MODIFIED: Pass true
 
         if (!isInteracting) return;
         
@@ -171,7 +180,7 @@ export function initializeUI(elements) {
         } else if (['brush', 'eraser', 'fill'].includes(activeTool)) {
             stopDrawing(() => onDrawEnd());
         }
-        updateCursor(e);
+        updateCursor(e, true); // MODIFIED: Pass true
     });
 
     canvas.addEventListener('wheel', (e) => {
@@ -186,9 +195,12 @@ export function initializeUI(elements) {
             document.querySelector('.tool-button.active')?.classList.remove('active');
             button.classList.add('active');
             activeTool = button.id;
-            updateCursor(e);
+            updateCursor(e, false); // MODIFIED: Pass false
         });
     });
+
+    // ADDED: Call this once on startup to fix the initial visibility glitch.
+    updateBrushPreviewSize(); 
 
     brushSizeSlider.addEventListener('input', (e) => {
         brushSizeValue.textContent = e.target.value;
