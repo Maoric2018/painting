@@ -48,7 +48,8 @@ export function initializeUI(elements) {
     }
 
     function updateBrushPreviewSize() {
-        const size = brushSizeSlider.value * getZoom();
+        const dpr = window.devicePixelRatio || 1;
+        const size = (brushSizeSlider.value * getZoom()) / dpr;
         brushPreview.style.width = `${size}px`;
         brushPreview.style.height = `${size}px`;
     }
