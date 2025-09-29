@@ -2,14 +2,15 @@
 
 import { applyTransform } from './viewport.js';
 import { compositeLayers, getDrawingDimensions } from './layers.js';
-import { getSelectionState } from './selection.js';
+// MODIFIED: Imported isPointInSelection and getSelectionState
+import { getSelectionState, isPointInSelection } from './selection.js';
 
 // --- State Variables for Drawing ---
-let isDrawing = false; // Flag to track if the mouse button is down and drawing.
-let lastX = 0; // Last X coordinate for smooth line drawing.
-let lastY = 0; // Last Y coordinate for smooth line drawing.
-let dashOffset = 0; // Used to animate the "marching ants" selection border.
-const tempSelectionCanvas = document.createElement('canvas'); // A helper canvas for efficiently drawing the moving selection image.
+let isDrawing = false;
+let lastX = 0;
+let lastY = 0;
+let dashOffset = 0; // For marching ants animation
+const tempSelectionCanvas = document.createElement('canvas'); // Helper canvas for moving selections
 
 /**
  * Resizes the main visible canvas to fit its container and handles high-DPI scaling.
@@ -17,49 +18,40 @@ const tempSelectionCanvas = document.createElement('canvas'); // A helper canvas
  */
 export function resizeVisibleCanvas(elements) {
     const { canvas, canvasContainer } = elements;
-    const dpr = window.devicePixelRatio || 1; // Get the device pixel ratio for high-res displays.
+    const dpr = window.devicePixelRatio || 1;
     const rect = canvasContainer.getBoundingClientRect();
     
-    // Set the internal resolution of the canvas.
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
-    // Set the display size of the canvas using CSS.
     canvas.style.width = `${rect.width}px`;
     canvas.style.height = `${rect.height}px`;
 }
 
 /**
- * The main render loop, called by requestAnimationFrame. It draws everything the user sees.
+ * The main render loop. It now creates a "desk" and "paper" effect and draws the selection outline.
  * @param {object} elements - The application's DOM elements.
  */
 export function redrawCanvas(elements) {
-    const { ctx } = elements; // This is the context of the main VISIBLE canvas.
-    const drawingDims = getDrawingDimensions(); // The size of our off-screen layer canvases.
-    const selection = getSelectionState(); // The current state of the selection tool.
+    const { ctx } = elements;
+    const drawingDims = getDrawingDimensions();
+    const selection = getSelectionState();
 
     ctx.save();
-    // Reset any transformations to draw the background.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // 1. Clear the entire visible canvas with a "desk" color (the area outside the paper).
-    ctx.fillStyle = '#334155'; 
+    ctx.fillStyle = '#334155'; // 1. Clear with "desk" color.
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     
-    // 2. Apply the current pan and zoom from the viewport module.
-    applyTransform();
+    applyTransform(); // 2. Apply pan and zoom.
 
-    // 3. Draw the "paper" background for the drawing area.
-    if (drawingDims.width > 0 && drawingDims.height > 0) {
+    if (drawingDims.width > 0 && drawingDims.height > 0) { // 3. Draw "paper" background.
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, drawingDims.width, drawingDims.height);
     }
 
-    // 4. Composite (draw) all visible layers onto the main canvas.
-    compositeLayers(ctx);
+    compositeLayers(ctx); // 4. Composite all layers.
 
-    // 5. If a selection is floating, draw its image data on top of everything else.
-    if (selection.isFloating && selection.imageData) {
-        // Optimization: Only update the temp canvas if the selection data has changed.
+    if (selection.isFloating && selection.imageData) { // 5. Draw the floating selection image if it exists.
         if (tempSelectionCanvas.width !== selection.imageData.width || tempSelectionCanvas.height !== selection.imageData.height) {
             tempSelectionCanvas.width = selection.imageData.width;
             tempSelectionCanvas.height = selection.imageData.height;
@@ -68,33 +60,24 @@ export function redrawCanvas(elements) {
         ctx.drawImage(tempSelectionCanvas, selection.currentX, selection.currentY);
     }
     
-    // 6. If there is any selection path (drawing or floating), draw the "marching ants" border.
-    if (selection.path.length > 1) {
+    if (selection.path.length > 1) { // 6. Draw the selection path (marching ants).
         const offsetX = selection.isFloating ? selection.currentX : 0;
         const offsetY = selection.isFloating ? selection.currentY : 0;
-        // Adjust the path points by the selection's current position.
         const path = selection.path.map(p => ({ x: p.x + offsetX, y: p.y + offsetY }));
         drawMarchingAnts(ctx, path, selection.isFloating || selection.isDrawing);
     }
     
     ctx.restore();
 
-    // Animate the marching ants for the next frame.
-    dashOffset = (dashOffset + 1) % 16;
+    dashOffset = (dashOffset + 1) % 16; // Animate the marching ants
 }
 
-/**
- * Helper function to draw the dashed "marching ants" selection outline.
- * @param {CanvasRenderingContext2D} ctx - The context to draw on.
- * @param {Array} path - An array of {x, y} points.
- * @param {boolean} shouldClose - Whether to close the path to form a complete shape.
- */
 function drawMarchingAnts(ctx, path, shouldClose = false) {
     ctx.save();
     ctx.strokeStyle = '#222';
     ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]); // 4 pixels on, 4 pixels off.
-    ctx.lineDashOffset = -dashOffset; // Animate the dash position.
+    ctx.setLineDash([4, 4]);
+    ctx.lineDashOffset = -dashOffset;
     ctx.beginPath();
     ctx.moveTo(path[0].x, path[0].y);
     for (let i = 1; i < path.length; i++) {
@@ -108,13 +91,11 @@ function drawMarchingAnts(ctx, path, shouldClose = false) {
 }
 
 /**
- * Applies a clipping mask to the given context if a selection is active.
- * This affects all subsequent drawing operations like `stroke()` or `fill()`.
+ * Applies a clipping mask to the context if a selection is active.
  * @param {CanvasRenderingContext2D} ctx - The context to apply the clip to.
  */
 function applySelectionClip(ctx) {
     const selection = getSelectionState();
-    // Only apply a clip if a selection is finalized and floating.
     if (!selection.isFloating) return;
 
     ctx.beginPath();
@@ -122,17 +103,16 @@ function applySelectionClip(ctx) {
     const offsetX = selection.currentX;
     const offsetY = selection.currentY;
 
-    // Build the path using the floating selection's current position.
     ctx.moveTo(path[0].x + offsetX, path[0].y + offsetY);
     for (let i = 1; i < path.length; i++) {
         ctx.lineTo(path[i].x + offsetX, path[i].y + offsetY);
     }
     ctx.closePath();
-    ctx.clip(); // Activate the clipping region.
+    ctx.clip();
 }
 
 /**
- * Main handler for mouse clicks on the canvas for tools that act instantly (like Fill).
+ * Main handler for mouse clicks on the canvas.
  * @param {number} x - The transformed x-coordinate.
  * @param {number} y - The transformed y-coordinate.
  * @param {object} state - Contains the active layer context and tool info.
@@ -148,17 +128,15 @@ export function handleCanvasClick(x, y, state, onDrawEnd) {
     
     if (activeTool === 'fill') {
         floodFill(x, y, state);
-        onDrawEnd(); // Fill is a single action, so save history immediately.
+        onDrawEnd();
         isDrawing = false;
     } else if (['brush', 'eraser'].includes(activeTool)) {
-        // For brush/eraser, we just start the drawing process.
         draw(x, y, state);
     }
 }
 
 /**
- * Draws a line segment from the last point to the current point.
- * Respects any active selection as a clipping mask.
+ * Draws a line, respecting any active selection as a clipping mask.
  * @param {number} x - The current transformed x-coordinate.
  * @param {number} y - The current transformed y-coordinate.
  * @param {object} state - The current drawing state.
@@ -168,16 +146,15 @@ export function draw(x, y, state) {
     const { activeLayer, activeTool, colorPicker, brushSizeSlider } = state;
     if (!activeLayer) return;
 
-    const ctx = activeLayer.ctx; // We are drawing on the OFF-SCREEN layer canvas.
+    const ctx = activeLayer.ctx;
     
     ctx.save();
-    applySelectionClip(ctx); // Apply clipping mask if a selection exists.
+    applySelectionClip(ctx); // Apply clipping mask if selection exists
 
     ctx.beginPath();
     ctx.moveTo(lastX, lastY);
     ctx.lineTo(x, y);
 
-    // 'destination-out' erases, 'source-over' draws normally.
     ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over';
     ctx.strokeStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : colorPicker.value;
     ctx.lineWidth = brushSizeSlider.value;
@@ -187,14 +164,9 @@ export function draw(x, y, state) {
     ctx.stroke();
     ctx.restore();
 
-    // Update the last position for the next segment.
     [lastX, lastY] = [x, y];
 }
 
-/**
- * Stops a drawing action (e.g., on mouseup) and triggers a history save.
- * @param {function} onDrawEnd - The callback to save the state.
- */
 export function stopDrawing(onDrawEnd) {
     if (isDrawing) {
         isDrawing = false;
@@ -202,62 +174,54 @@ export function stopDrawing(onDrawEnd) {
     }
 }
 
-/**
- * Performs a flood fill operation on the active layer.
- * @param {number} startX - The starting x-coordinate.
- * @param {number} startY - The starting y-coordinate.
- * @param {object} state - The current drawing state.
- */
 function floodFill(startX, startY, state) {
     const { activeLayer, colorPicker } = state;
     const ctx = activeLayer.ctx;
     const canvas = activeLayer.canvas;
 
+    // NOTE: We no longer need to call applySelectionClip() here, as the check is now done inside the algorithm.
+    // However, it doesn't hurt to leave it, in case you use it for other purposes.
     ctx.save();
-    applySelectionClip(ctx); // Apply the clipping mask.
+    applySelectionClip(ctx);
 
     const startX_scaled = Math.floor(startX);
     const startY_scaled = Math.floor(startY);
 
-    // *** THE CORE PROBLEM IS HERE ***
-    // `getImageData` reads the raw pixel data from the canvas and is NOT AFFECTED by the clipping region set by `ctx.clip()`.
-    // The algorithm will therefore read and write pixels outside the intended selection area.
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const { width, height } = imageData;
-    const data = imageData.data; // This is a flat array of [R, G, B, A, R, G, B, A, ...] values.
+    const data = imageData.data;
     
-    // Get the color of the pixel that was clicked. This is the color to be replaced.
     const targetColor = getPixelColor(startX_scaled, startY_scaled, width, data);
     const fillColor = hexToRgba(colorPicker.value);
 
-    // If the target color is the same as the fill color, do nothing.
     if (colorsMatch(targetColor, fillColor)) {
         ctx.restore();
         return;
     }
 
-    // A queue-based (Breadth-First Search) flood fill algorithm.
     const queue = [[startX_scaled, startY_scaled]];
 
     while (queue.length > 0) {
         const [x, y] = queue.shift();
-        if (x < 0 || x >= width || y < 0 || y >= height) continue; // Boundary check.
+
+        // ADDED: This is the fix.
+        // If there's a selection, and the current pixel is outside of it, skip this pixel entirely.
+        if (getSelectionState().isFloating && !isPointInSelection(x, y)) {
+            continue;
+        }
+
+        if (x < 0 || x >= width || y < 0 || y >= height) continue;
         
         const currentColor = getPixelColor(x, y, width, data);
 
-        // If the current pixel's color matches the target color...
         if (colorsMatch(currentColor, targetColor)) {
-            setPixelColor(x, y, fillColor, width, data); // ...change its color...
-            // ...and add its neighbors to the queue to be checked.
+            setPixelColor(x, y, fillColor, width, data);
             queue.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
         }
     }
-    // After modifying the imageData array, put it back onto the canvas.
     ctx.putImageData(imageData, 0, 0);
-    ctx.restore(); // Restore context state, removing the clipping path.
+    ctx.restore(); // Restore from clipping
 }
-
-// --- Flood Fill Helper Functions ---
 
 function getPixelColor(x, y, width, data) {
     const index = (y * width + x) * 4;
@@ -273,8 +237,7 @@ function setPixelColor(x, y, color, width, data) {
 }
 
 function colorsMatch(c1, c2) {
-    // Uses a tolerance threshold to account for anti-aliasing and slight color variations.
-    const threshold = 30; 
+    const threshold = 30;
     return Math.abs(c1.r - c2.r) < threshold &&
            Math.abs(c1.g - c2.g) < threshold &&
            Math.abs(c1.b - c2.b) < threshold &&
@@ -283,14 +246,14 @@ function colorsMatch(c1, c2) {
 
 function hexToRgba(hex) {
     let r = 0, g = 0, b = 0;
-    if (hex.length == 4) { // Handle shorthand hex like #FFF
+    if (hex.length == 4) {
         r = parseInt(hex[1] + hex[1], 16);
         g = parseInt(hex[2] + hex[2], 16);
         b = parseInt(hex[3] + hex[3], 16);
-    } else if (hex.length == 7) { // Handle full hex like #FFFFFF
+    } else if (hex.length == 7) {
         r = parseInt(hex.substring(1, 3), 16);
         g = parseInt(hex.substring(3, 5), 16);
         b = parseInt(hex.substring(5, 7), 16);
     }
-    return { r, g, b, a: 255 }; // Assume full alpha.
+    return { r, g, b, a: 255 };
 }
