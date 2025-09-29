@@ -2,13 +2,14 @@
 import { handleCanvasClick, draw, stopDrawing, redrawCanvas, pickColorAt, drawZoomPreview } from './canvas.js';
 import { saveState, undo, redo, getHistoryLength, getRedoStackLength, initializeHistoryForLayer, deleteHistoryForLayer } from './history.js';
 import { getTransformedPoint, zoomOnWheel, startPan, stopPan, pan, getZoom, setContexts } from './viewport.js';
-import { addNewLayer, deleteActiveLayer, getActiveLayer, updateActiveLayerThumbnail } from './layers.js';
-// MODIFIED: Added deleteSelectionContents
+// MODIFIED: Added getLayerById
+import { addNewLayer, deleteActiveLayer, getActiveLayer, updateActiveLayerThumbnail, setActiveLayer, getLayerById } from './layers.js';
 import { startSelection, addPointToSelection, endSelection, getSelectionState, clearSelection, pasteSelection, startMove, moveSelection, isPointInSelection, deleteSelectionContents } from './selection.js';
 
 let activeTool = 'brush';
-let previousTool = 'brush'; 
-let isInteracting = false; 
+let previousTool = 'brush';
+let isInteracting = false;
+let interactionLayer = null;
 
 /**
  * Initializes all UI event listeners.
@@ -65,6 +66,9 @@ export function initializeUI(elements) {
         brushPreview.style.height = `${size}px`;
     }
     
+    /**
+     * Commits the current floating selection to the active layer, saves history, and clears the selection state.
+     */
     function commitSelection() {
         const selection = getSelectionState();
         if (!selection.isFloating) {
@@ -72,12 +76,16 @@ export function initializeUI(elements) {
             return;
         }
 
-        const activeLayer = getActiveLayer();
-        if (activeLayer) {
-            pasteSelection(activeLayer.ctx);
+        // MODIFIED: Find the layer the selection originally came from using its stored ID
+        const originLayer = getLayerById(selection.originLayerId);
+
+        if (originLayer) {
+            // Paste the selection onto its original layer
+            pasteSelection(originLayer.ctx);
             clearSelection();
-            onDrawEnd();
+            onDrawEnd(originLayer); // Save history for the correct layer
         } else {
+            // Failsafe in case the original layer was deleted, then just clear selection
             clearSelection();
         }
     }
@@ -90,13 +98,12 @@ export function initializeUI(elements) {
                 commitSelection();
                 e.preventDefault();
             } 
-            // MODIFIED: Added handler for Delete and Backspace keys
             else if (e.key === 'Delete' || e.key === 'Backspace') {
-                e.preventDefault(); // Prevent browser back navigation on backspace
+                e.preventDefault(); 
                 const activeLayer = getActiveLayer();
                 if (activeLayer) {
                     deleteSelectionContents(activeLayer.ctx);
-                    onDrawEnd(); // Save the deletion to history
+                    onDrawEnd(); 
                 }
             }
         }
@@ -109,17 +116,23 @@ export function initializeUI(elements) {
         zoomPreviewContainer.classList.add('hidden');
         if (isInteracting) {
             if (activeTool === 'lasso' && getSelectionState().isDrawing) {
-                const activeLayer = getActiveLayer();
-                if (activeLayer) endSelection(activeLayer.ctx);
+                if (interactionLayer) endSelection(interactionLayer);
             }
-            stopDrawing(() => onDrawEnd());
+            stopDrawing(() => onDrawEnd(interactionLayer));
             isInteracting = false;
+            interactionLayer = null;
         }
     });
 
     canvas.addEventListener('mousedown', (e) => {
-        const activeLayer = getActiveLayer();
-        if (!activeLayer && activeTool !== 'pan') { return; }
+        isInteracting = true;
+        interactionLayer = getActiveLayer(); 
+
+        if (!interactionLayer && activeTool !== 'pan') { 
+            isInteracting = false;
+            interactionLayer = null;
+            return; 
+        }
 
         if (activeTool === 'eyedropper') {
             const dpr = window.devicePixelRatio || 1;
@@ -134,10 +147,11 @@ export function initializeUI(elements) {
             if (prevToolButton) {
                 prevToolButton.click();
             }
+            isInteracting = false;
+            interactionLayer = null;
             return;
         }
         
-        isInteracting = true;
         const transformedPoint = getTransformedPoint(e.clientX - canvas.getBoundingClientRect().left, e.clientY - canvas.getBoundingClientRect().top);
         const selection = getSelectionState();
 
@@ -157,8 +171,8 @@ export function initializeUI(elements) {
                 }
             }
         } else { // Brush, Eraser, Fill
-            const state = { activeLayer, activeTool, colorPicker, brushSizeSlider };
-            handleCanvasClick(transformedPoint.x, transformedPoint.y, state, () => onDrawEnd());
+            const state = { activeLayer: interactionLayer, activeTool, colorPicker, brushSizeSlider };
+            handleCanvasClick(transformedPoint.x, transformedPoint.y, state, () => onDrawEnd(interactionLayer));
         }
         updateCursor(e, true);
     });
@@ -192,35 +206,37 @@ export function initializeUI(elements) {
             return;
         }
         
-        const activeLayer = getActiveLayer();
-        if (!activeLayer) return;
+        if (!interactionLayer) return;
 
         if (activeTool === 'lasso') {
             addPointToSelection(transformedPoint.x, transformedPoint.y);
         } else if (activeTool === 'move') {
             moveSelection(transformedPoint.x, transformedPoint.y);
         } else {
-            const state = { activeLayer, activeTool, colorPicker, brushSizeSlider };
+            const state = { activeLayer: interactionLayer, activeTool, colorPicker, brushSizeSlider };
             draw(transformedPoint.x, transformedPoint.y, state);
         }
     });
     
     canvas.addEventListener('mouseup', (e) => {
         if (!isInteracting) return;
-        isInteracting = false;
 
-        const activeLayer = getActiveLayer();
         if (activeTool === 'pan') {
             stopPan();
         } else if (activeTool === 'lasso') {
-            if (activeLayer) {
-                endSelection(activeLayer.ctx);
-                onDrawEnd();
+            if (interactionLayer) {
+                // MODIFIED: Pass the full layer object to record its ID
+                endSelection(interactionLayer); 
+                onDrawEnd(interactionLayer);
+                setActiveLayer(interactionLayer.id);
             }
         } else if (['brush', 'eraser', 'fill'].includes(activeTool)) {
-            stopDrawing(() => onDrawEnd());
+            stopDrawing(() => onDrawEnd(interactionLayer));
         }
         updateCursor(e, true);
+        
+        isInteracting = false;
+        interactionLayer = null;
     });
 
     canvas.addEventListener('wheel', (e) => {
@@ -232,6 +248,9 @@ export function initializeUI(elements) {
     // --- Toolbar & Layer Panel Event Listeners ---
     toolButtons.forEach(button => {
         button.addEventListener('click', (e) => {
+            if (getSelectionState().isFloating && !['move', 'eyedropper'].includes(button.id)) {
+                commitSelection();
+            }
             if (button.id === 'eyedropper' && activeTool !== 'eyedropper') {
                 previousTool = activeTool;
             }
@@ -300,15 +319,15 @@ export function initializeUI(elements) {
             redoBtn.disabled = true;
         }
     }
-
-    function onDrawEnd() {
-        const activeLayer = getActiveLayer();
-        if (activeLayer) {
-            saveState(activeLayer.id, activeLayer.ctx, activeLayer.canvas);
+    
+    function onDrawEnd(targetLayer = null) {
+        const layerToUpdate = targetLayer || getActiveLayer();
+        if (layerToUpdate) {
+            saveState(layerToUpdate.id, layerToUpdate.ctx, layerToUpdate.canvas);
             updateUndoRedoButtons();
-            updateActiveLayerThumbnail();
+            updateActiveLayerThumbnail(); 
         }
     }
     
-    updateUndoRedoButtons(); // Initial State Call
+    updateUndoRedoButtons();
 }

@@ -11,6 +11,7 @@ let selectionState = {
     currentY: 0,            // The current top-left Y position of the floating selection.
     moveStartX: 0,          // The starting X position of a move drag.
     moveStartY: 0,          // The starting Y position of a move drag.
+    originLayerId: null,    // ADDED: Stores the ID of the layer the selection was created on.
 };
 
 /**
@@ -41,13 +42,17 @@ export function addPointToSelection(x, y) {
 
 /**
  * Finalizes the selection path, extracts the pixel data from the layer, and clears the original area.
- * @param {CanvasRenderingContext2D} activeLayerCtx - The context of the currently active layer.
+ * @param {object} originLayer - The full layer object from which the selection is being made.
  */
-export function endSelection(activeLayerCtx) {
+export function endSelection(originLayer) {
     if (selectionState.path.length < 3) {
         clearSelection();
         return;
     }
+    
+    // MODIFIED: Store the ID of the layer the selection came from
+    selectionState.originLayerId = originLayer.id;
+    const activeLayerCtx = originLayer.ctx;
     
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     selectionState.path.forEach(p => {
@@ -132,11 +137,12 @@ export function clearSelection() {
         currentY: 0,
         moveStartX: 0,
         moveStartY: 0,
+        originLayerId: null, // MODIFIED: Reset the origin ID
     };
 }
 
 /**
- * ADDED: Erases the content within the current floating selection on the active layer.
+ * Erases the content within the current floating selection on the active layer.
  * @param {CanvasRenderingContext2D} activeLayerCtx - The context of the active layer.
  */
 export function deleteSelectionContents(activeLayerCtx) {
