@@ -179,8 +179,6 @@ function floodFill(startX, startY, state) {
     const ctx = activeLayer.ctx;
     const canvas = activeLayer.canvas;
 
-    // NOTE: We no longer need to call applySelectionClip() here, as the check is now done inside the algorithm.
-    // However, it doesn't hurt to leave it, in case you use it for other purposes.
     ctx.save();
     applySelectionClip(ctx);
 
@@ -204,8 +202,6 @@ function floodFill(startX, startY, state) {
     while (queue.length > 0) {
         const [x, y] = queue.shift();
 
-        // ADDED: This is the fix.
-        // If there's a selection, and the current pixel is outside of it, skip this pixel entirely.
         if (getSelectionState().isFloating && !isPointInSelection(x, y)) {
             continue;
         }
@@ -220,8 +216,76 @@ function floodFill(startX, startY, state) {
         }
     }
     ctx.putImageData(imageData, 0, 0);
-    ctx.restore(); // Restore from clipping
+    ctx.restore();
 }
+
+/**
+ * ADDED: Picks the color from a specific coordinate on the main visible canvas.
+ * @param {CanvasRenderingContext2D} mainCtx - The context of the visible canvas.
+ * @param {number} screenX - The x-coordinate on the screen (DPR-scaled).
+ * @param {number} screenY - The y-coordinate on the screen (DPR-scaled).
+ * @returns {string} The color in hex format.
+ */
+export function pickColorAt(mainCtx, screenX, screenY) {
+    const pixel = mainCtx.getImageData(screenX, screenY, 1, 1).data;
+    const r = pixel[0].toString(16).padStart(2, '0');
+    const g = pixel[1].toString(16).padStart(2, '0');
+    const b = pixel[2].toString(16).padStart(2, '0');
+    return `#${r}${g}${b}`;
+}
+
+/**
+ * ADDED: Draws the zoomed-in preview for the eyedropper tool.
+ * @param {CanvasRenderingContext2D} previewCtx - The context of the zoom preview canvas.
+ * @param {CanvasRenderingContext2D} mainCtx - The context of the main visible canvas.
+ * @param {number} screenX - The x-coordinate of the cursor on the screen (DPR-scaled).
+ * @param {number} screenY - The y-coordinate of the cursor on the screen (DPR-scaled).
+ */
+export function drawZoomPreview(previewCtx, mainCtx, screenX, screenY) {
+    const previewCanvas = previewCtx.canvas;
+    const captureSize = 15; // How many pixels to capture (e.g., 15x15)
+    const halfCapture = Math.floor(captureSize / 2);
+
+    // Turn off image smoothing to get a sharp, pixelated look.
+    previewCtx.imageSmoothingEnabled = false;
+
+    // Clear the previous preview
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    
+    // Draw the captured area from the main canvas onto the preview canvas, scaling it up.
+    previewCtx.drawImage(
+        mainCtx.canvas,
+        screenX - halfCapture, // source x
+        screenY - halfCapture, // source y
+        captureSize,           // source width
+        captureSize,           // source height
+        0,                     // destination x
+        0,                     // destination y
+        previewCanvas.width,   // destination width
+        previewCanvas.height   // destination height
+    );
+
+    // Draw a grid over the preview
+    const gridSize = previewCanvas.width / captureSize;
+    previewCtx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+    previewCtx.lineWidth = 1;
+    for (let i = 0; i < captureSize; i++) {
+        previewCtx.beginPath();
+        previewCtx.moveTo(i * gridSize, 0);
+        previewCtx.lineTo(i * gridSize, previewCanvas.height);
+        previewCtx.stroke();
+        previewCtx.beginPath();
+        previewCtx.moveTo(0, i * gridSize);
+        previewCtx.lineTo(previewCanvas.width, i * gridSize);
+        previewCtx.stroke();
+    }
+    
+    // Draw a marker in the center to show which pixel will be selected
+    previewCtx.strokeStyle = 'red';
+    previewCtx.lineWidth = 2;
+    previewCtx.strokeRect(halfCapture * gridSize, halfCapture * gridSize, gridSize, gridSize);
+}
+
 
 function getPixelColor(x, y, width, data) {
     const index = (y * width + x) * 4;

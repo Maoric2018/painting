@@ -12,7 +12,6 @@
 
     <div class="flex h-screen w-screen">
         
-        <!-- Toolbar Section (Left) -->
         <aside class="w-72 bg-slate-900 p-4 md:p-6 shadow-lg flex flex-col space-y-6 overflow-y-auto">
             <header class="text-center">
                 <h1 class="text-2xl font-bold text-indigo-400">SketchPad</h1>
@@ -21,15 +20,18 @@
             
             <div class="border-t border-gray-700"></div>
 
-            <!-- Color Selection -->
             <div class="space-y-2">
                 <label for="colorPicker" class="text-sm font-medium text-gray-400">Color</label>
-                <div class="color-picker-wrapper">
-                    <input type="color" id="colorPicker" value="#000000">
+                <div class="flex items-center space-x-2">
+                    <div class="color-picker-wrapper flex-1">
+                        <input type="color" id="colorPicker" value="#000000">
+                    </div>
+                    <button id="eyedropper" class="tool-button p-2 rounded-md" title="Pick Color from Canvas">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 2-2.5 2.5 3 3L19 5Z"/><path d="m14 4-8 8 3 3 8-8Z"/><path d="m3 21 3-3 8.5-8.5-3-3L3 18Z"/></svg>
+                    </button>
                 </div>
             </div>
 
-            <!-- Brush Size -->
             <div class="space-y-2">
                 <label for="brushSize" class="text-sm font-medium text-gray-400">Brush Size</label>
                 <div class="flex items-center space-x-3">
@@ -40,7 +42,6 @@
 
             <div class="border-t border-gray-700"></div>
             
-            <!-- Tools -->
             <div class="grid grid-cols-2 gap-2">
                 <button id="brush" class="tool-button active flex items-center justify-center space-x-2 p-2 rounded-md">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
@@ -70,7 +71,6 @@
 
             <div class="border-t border-gray-700"></div>
 
-            <!-- Action Buttons -->
             <div class="grid grid-cols-2 gap-2">
                 <button id="undo-btn" class="flex items-center justify-center space-x-2 bg-gray-700 hover:bg-gray-600 p-3 rounded-lg disabled:opacity-50 transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 13a9 9 0 1 1-3.3-8.8"/></svg>
@@ -81,18 +81,18 @@
             </div>
         </aside>
 
-        <!-- Main Canvas Area -->
         <main id="canvas-container" class="relative flex-1 bg-slate-800 p-2">
             <canvas id="sketchCanvas" class="w-full h-full bg-white rounded-md shadow-inner"></canvas>
             <div id="brush-preview" class="hidden"></div>
+            <div id="zoom-preview-container" class="hidden">
+                <canvas id="zoom-preview-canvas" width="150" height="150"></canvas>
+            </div>
         </main>
         
-        <!-- Layers Panel (Right) -->
         <aside class="w-72 bg-slate-900 p-4 flex flex-col space-y-4">
             <h2 class="text-xl font-bold text-center text-indigo-400">Layers</h2>
             <div id="layers-list" class="flex-1 bg-slate-800 rounded-lg p-2 space-y-2 overflow-y-auto">
-                <!-- Layer items will be dynamically inserted here -->
-            </div>
+                </div>
             <div class="flex items-center justify-center space-x-2">
                 <button id="add-layer-btn" class="layer-control-btn" title="Add New Layer">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
@@ -108,4 +108,3 @@
     <script type="module" src="main.js"></script>
 </body>
 </html>
-

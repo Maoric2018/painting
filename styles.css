@@ -63,11 +63,31 @@ input[type="range"]::-moz-range-thumb {
     z-index: 100;
 }
 
+/* ADDED: Eyedropper Zoom Preview Styles */
+#zoom-preview-container {
+    position: absolute;
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    border: 3px solid #6366F1; /* indigo-500 */
+    overflow: hidden;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 101; /* Above the brush preview */
+    background-color: #f1f5f9; /* cool-gray-100 */
+}
+
+#zoom-preview-canvas {
+    width: 100%;
+    height: 100%;
+}
+
 /* Canvas Cursors */
 .pan-cursor { cursor: grab; }
 .panning-cursor { cursor: grabbing; }
 .no-cursor { cursor: none; }
 .move-cursor { cursor: move; }
+.eyedropper-cursor { cursor: crosshair; } /* ADDED */
 
 /* Layer Panel Styles */
 .layer-item {
@@ -104,4 +124,3 @@ input[type="range"]::-moz-range-thumb {
     padding: 0 4px;
     outline: none;
 }
-
