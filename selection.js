@@ -52,6 +52,23 @@ function hexToRgba(hex) {
 }
 
 /**
+ * MODIFIED: New helper function to apply the lasso path as a clipping mask.
+ * This ensures all drawing operations are confined to the original selection shape.
+ * @param {CanvasRenderingContext2D} ctx - The context to apply the clip to.
+ */
+function applySelectionClip(ctx) {
+    if (!selectionState.path.length) return;
+    ctx.beginPath();
+    ctx.moveTo(selectionState.path[0].x, selectionState.path[0].y);
+    for (let i = 1; i < selectionState.path.length; i++) {
+        ctx.lineTo(selectionState.path[i].x, selectionState.path[i].y);
+    }
+    ctx.closePath();
+    ctx.clip();
+}
+
+
+/**
  * Commits a floating selection if one exists, then clears the state and starts a new path.
  * @param {number} x - The starting x-coordinate.
  * @param {number} y - The starting y-coordinate.
@@ -104,14 +121,17 @@ export function endSelection(originLayer) {
 
     selectionState.boundingBox = { x: minX, y: minY, width, height };
     
+    // Normalize the path relative to the bounding box's top-left corner
+    const normalizedPath = selectionState.path.map(p => ({ x: p.x - minX, y: p.y - minY }));
+
     const tempCaptureCanvas = document.createElement('canvas');
     tempCaptureCanvas.width = width;
     tempCaptureCanvas.height = height;
     const tempCaptureCtx = tempCaptureCanvas.getContext('2d');
     tempCaptureCtx.beginPath();
-    tempCaptureCtx.moveTo(selectionState.path[0].x - minX, selectionState.path[0].y - minY);
-    for (let i = 1; i < selectionState.path.length; i++) {
-        tempCaptureCtx.lineTo(selectionState.path[i].x - minX, selectionState.path[i].y - minY);
+    tempCaptureCtx.moveTo(normalizedPath[0].x, normalizedPath[0].y);
+    for (let i = 1; i < normalizedPath.length; i++) {
+        tempCaptureCtx.lineTo(normalizedPath[i].x, normalizedPath[i].y);
     }
     tempCaptureCtx.closePath();
     tempCaptureCtx.clip();
@@ -138,9 +158,11 @@ export function endSelection(originLayer) {
     selectionState.currentX = minX;
     selectionState.currentY = minY;
 
+    // From now on, the official path is the one relative to the tempCanvas
+    selectionState.path = normalizedPath; 
+    
     saveSelectionState();
 
-    selectionState.path = selectionState.path.map(p => ({ x: p.x - minX, y: p.y - minY }));
     selectionState.isDrawing = false;
     selectionState.isFloating = true;
 }
@@ -158,7 +180,11 @@ export function clearSelection() {
 /** Erases the content within the current floating selection and saves the state. */
 export function deleteSelectionContents() {
     if (!selectionState.isFloating || !selectionState.tempCtx) return;
-    selectionState.tempCtx.clearRect(0, 0, selectionState.tempCanvas.width, selectionState.tempCanvas.height);
+    const ctx = selectionState.tempCtx;
+    ctx.save();
+    applySelectionClip(ctx);
+    ctx.clearRect(0, 0, selectionState.tempCanvas.width, selectionState.tempCanvas.height);
+    ctx.restore();
     saveSelectionState();
 }
 
@@ -181,7 +207,7 @@ export function moveSelection(x, y) {
 }
 
 /**
- * Draws directly onto the floating selection's temporary canvas.
+ * Draws directly onto the floating selection's temporary canvas, respecting the clipping mask.
  * @param {number} startX - The previous transformed x-coordinate.
  * @param {number} startY - The previous transformed y-coordinate.
  * @param {number} endX - The current transformed x-coordinate.
@@ -199,6 +225,9 @@ export function drawOnSelection(startX, startY, endX, endY, state) {
     const localEndX = endX - selectionState.currentX;
     const localEndY = endY - selectionState.currentY;
 
+    ctx.save(); // Save the context state before applying the clip
+    applySelectionClip(ctx); // Apply the clipping mask
+
     ctx.beginPath();
     ctx.moveTo(localStartX, localStartY);
     ctx.lineTo(localEndX, localEndY);
@@ -208,10 +237,12 @@ export function drawOnSelection(startX, startY, endX, endY, state) {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.stroke();
+
+    ctx.restore(); // Restore the context, removing the clip
 }
 
 /**
- * Performs a flood fill operation on the selection's temporary canvas.
+ * Performs a flood fill operation on the selection's temporary canvas, respecting the clipping mask.
  * @param {number} canvasX - The x-coordinate of the click on the main canvas.
  * @param {number} canvasY - The y-coordinate of the click on the main canvas.
  * @param {string} fillColorHex - The hex code of the color to fill with.
@@ -225,6 +256,13 @@ export function fillSelection(canvasX, canvasY, fillColorHex) {
     const startX = Math.floor(canvasX - selectionState.currentX);
     const startY = Math.floor(canvasY - selectionState.currentY);
     
+    // First, check if the click is even inside the clipped area
+    ctx.save();
+    applySelectionClip(ctx);
+    const isInside = ctx.isPointInPath(startX, startY);
+    ctx.restore();
+    if (!isInside) return;
+
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const { width, height, data } = imageData;
 
@@ -234,12 +272,18 @@ export function fillSelection(canvasX, canvasY, fillColorHex) {
     const fillColor = hexToRgba(fillColorHex);
 
     if (colorsMatch(targetColor, fillColor)) return;
-    if (targetColor.a === 0) return; // Don't fill transparent areas
 
     const queue = [[startX, startY]];
+    
+    ctx.save();
+    applySelectionClip(ctx); // Apply clip before getting image data to be 100% sure we only edit inside
+
     while(queue.length > 0) {
         const [x, y] = queue.shift();
         if (x < 0 || x >= width || y < 0 || y >= height) continue;
+        
+        // This check is now slightly redundant due to the clip, but it's a good fail-safe
+        if (!ctx.isPointInPath(x, y)) continue;
 
         const currentColor = getPixelColor(x, y, width, data);
         if (colorsMatch(currentColor, targetColor)) {
@@ -247,6 +291,8 @@ export function fillSelection(canvasX, canvasY, fillColorHex) {
             queue.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
         }
     }
+    ctx.restore(); // Restore before putImageData
+    
     ctx.putImageData(imageData, 0, 0);
 }
 
@@ -289,7 +335,6 @@ export function undoSelectionChange() {
     selectionState.currentX = prevState.x;
     selectionState.currentY = prevState.y;
 
-    // MODIFIED: Force the main canvas to redraw to show the change
     document.dispatchEvent(new CustomEvent('requestRedraw'));
 }
 
@@ -303,7 +348,6 @@ export function redoSelectionChange() {
     selectionState.currentX = nextState.x;
     selectionState.currentY = nextState.y;
     
-    // MODIFIED: Force the main canvas to redraw to show the change
     document.dispatchEvent(new CustomEvent('requestRedraw'));
 }
 
