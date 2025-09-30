@@ -1,18 +1,55 @@
 // --- Selection Management Module ---
 // This module handles the state and logic for the lasso selection and move tools.
+// It now manages its own temporary canvas and history stack while a selection is active.
 
 let selectionState = {
     isDrawing: false,       // Is a selection path being drawn?
     isFloating: false,      // Is there a finalized selection floating?
     path: [],               // The array of points defining the lasso path.
-    imageData: null,        // The pixel data of the selection.
+    imageData: null,        // A backup of the initial pixel data.
     boundingBox: null,      // The original position and size of the selection.
     currentX: 0,            // The current top-left X position of the floating selection.
     currentY: 0,            // The current top-left Y position of the floating selection.
     moveStartX: 0,          // The starting X position of a move drag.
     moveStartY: 0,          // The starting Y position of a move drag.
-    originLayerId: null,    // ADDED: Stores the ID of the layer the selection was created on.
+    originLayerId: null,    // Stores the ID of the layer the selection was created on.
+    
+    // --- NEW PROPERTIES FOR SUB-HISTORY ---
+    tempCanvas: null,       // An offscreen canvas for the floating selection
+    tempCtx: null,          // The context for the tempCanvas
+    tempHistory: [],        // Undo stack for the selection
+    tempRedoStack: [],      // Redo stack for the selection
 };
+
+// --- Helper Functions (copied from canvas.js for module independence) ---
+function getPixelColor(x, y, width, data) {
+    const index = (y * width + x) * 4;
+    return { r: data[index], g: data[index + 1], b: data[index + 2], a: data[index + 3] };
+}
+function setPixelColor(x, y, color, width, data) {
+    const index = (y * width + x) * 4;
+    data[index] = color.r;
+    data[index + 1] = color.g;
+    data[index + 2] = color.b;
+    data[index + 3] = color.a;
+}
+function colorsMatch(c1, c2) {
+    const threshold = 30;
+    return Math.abs(c1.r - c2.r) < threshold && Math.abs(c1.g - c2.g) < threshold && Math.abs(c1.b - c2.b) < threshold && Math.abs(c1.a - c2.a) < threshold;
+}
+function hexToRgba(hex) {
+    let r = 0, g = 0, b = 0;
+    if (hex.length == 4) {
+        r = parseInt(hex[1] + hex[1], 16);
+        g = parseInt(hex[2] + hex[2], 16);
+        b = parseInt(hex[3] + hex[3], 16);
+    } else if (hex.length == 7) {
+        r = parseInt(hex.substring(1, 3), 16);
+        g = parseInt(hex.substring(3, 5), 16);
+        b = parseInt(hex.substring(5, 7), 16);
+    }
+    return { r, g, b, a: 255 };
+}
 
 /**
  * Commits a floating selection if one exists, then clears the state and starts a new path.
@@ -24,7 +61,6 @@ export function startSelection(x, y, onSelectionCommitted) {
     if (selectionState.isFloating) {
         onSelectionCommitted();
     }
-
     clearSelection();
     selectionState.isDrawing = true;
     selectionState.path = [{ x, y }];
@@ -41,7 +77,7 @@ export function addPointToSelection(x, y) {
 }
 
 /**
- * Finalizes the selection path, extracts the pixel data from the layer, and clears the original area.
+ * Finalizes the selection path, extracts the pixel data, creates a temporary canvas for editing, and clears the original area.
  * @param {object} originLayer - The full layer object from which the selection is being made.
  */
 export function endSelection(originLayer) {
@@ -50,16 +86,13 @@ export function endSelection(originLayer) {
         return;
     }
     
-    // MODIFIED: Store the ID of the layer the selection came from
     selectionState.originLayerId = originLayer.id;
     const activeLayerCtx = originLayer.ctx;
     
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     selectionState.path.forEach(p => {
-        minX = Math.min(minX, p.x);
-        minY = Math.min(minY, p.y);
-        maxX = Math.max(maxX, p.x);
-        maxY = Math.max(maxY, p.y);
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
     });
     const width = Math.ceil(maxX - minX);
     const height = Math.ceil(maxY - minY);
@@ -70,24 +103,20 @@ export function endSelection(originLayer) {
     }
 
     selectionState.boundingBox = { x: minX, y: minY, width, height };
-
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const tempCtx = tempCanvas.getContext('2d');
-
-    tempCtx.save();
-    tempCtx.beginPath();
-    tempCtx.moveTo(selectionState.path[0].x - minX, selectionState.path[0].y - minY);
-    for (let i = 1; i < selectionState.path.length; i++) {
-        tempCtx.lineTo(selectionState.path[i].x - minX, selectionState.path[i].y - minY);
-    }
-    tempCtx.closePath();
-    tempCtx.clip();
-    tempCtx.drawImage(activeLayerCtx.canvas, -minX, -minY);
-    tempCtx.restore();
     
-    selectionState.imageData = tempCtx.getImageData(0, 0, width, height);
+    const tempCaptureCanvas = document.createElement('canvas');
+    tempCaptureCanvas.width = width;
+    tempCaptureCanvas.height = height;
+    const tempCaptureCtx = tempCaptureCanvas.getContext('2d');
+    tempCaptureCtx.beginPath();
+    tempCaptureCtx.moveTo(selectionState.path[0].x - minX, selectionState.path[0].y - minY);
+    for (let i = 1; i < selectionState.path.length; i++) {
+        tempCaptureCtx.lineTo(selectionState.path[i].x - minX, selectionState.path[i].y - minY);
+    }
+    tempCaptureCtx.closePath();
+    tempCaptureCtx.clip();
+    tempCaptureCtx.drawImage(activeLayerCtx.canvas, -minX, -minY);
+    selectionState.imageData = tempCaptureCtx.getImageData(0, 0, width, height);
 
     activeLayerCtx.save();
     activeLayerCtx.beginPath();
@@ -100,90 +129,47 @@ export function endSelection(originLayer) {
     activeLayerCtx.fill();
     activeLayerCtx.restore();
 
-    const normalizedPath = selectionState.path.map(p => ({ x: p.x - minX, y: p.y - minY }));
-    selectionState.path = normalizedPath; 
+    selectionState.tempCanvas = document.createElement('canvas');
+    selectionState.tempCanvas.width = width;
+    selectionState.tempCanvas.height = height;
+    selectionState.tempCtx = selectionState.tempCanvas.getContext('2d');
+    selectionState.tempCtx.putImageData(selectionState.imageData, 0, 0);
+    
     selectionState.currentX = minX;
     selectionState.currentY = minY;
+
+    saveSelectionState();
+
+    selectionState.path = selectionState.path.map(p => ({ x: p.x - minX, y: p.y - minY }));
     selectionState.isDrawing = false;
     selectionState.isFloating = true;
 }
 
-/**
- * Pastes the currently floating selection data onto a layer.
- * @param {CanvasRenderingContext2D} activeLayerCtx - The context of the active layer.
- */
-export function pasteSelection(activeLayerCtx) {
-    if (!selectionState.isFloating || !selectionState.imageData) return;
-    
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = selectionState.imageData.width;
-    tempCanvas.height = selectionState.imageData.height;
-    tempCanvas.getContext('2d').putImageData(selectionState.imageData, 0, 0);
-
-    activeLayerCtx.drawImage(tempCanvas, selectionState.currentX, selectionState.currentY);
-}
-
-/**
- * Resets the selection state completely.
- */
+/** Resets the selection state completely. */
 export function clearSelection() {
     selectionState = {
-        isDrawing: false,
-        isFloating: false,
-        path: [],
-        imageData: null,
-        boundingBox: null,
-        currentX: 0,
-        currentY: 0,
-        moveStartX: 0,
-        moveStartY: 0,
-        originLayerId: null, // MODIFIED: Reset the origin ID
+        isDrawing: false, isFloating: false, path: [], imageData: null,
+        boundingBox: null, currentX: 0, currentY: 0, moveStartX: 0,
+        moveStartY: 0, originLayerId: null, tempCanvas: null, tempCtx: null,
+        tempHistory: [], tempRedoStack: [],
     };
 }
 
-/**
- * Erases the content within the current floating selection on the active layer.
- * @param {CanvasRenderingContext2D} activeLayerCtx - The context of the active layer.
- */
-export function deleteSelectionContents(activeLayerCtx) {
-    if (!selectionState.isFloating) return;
-
-    const path = selectionState.path;
-    const offsetX = selectionState.currentX;
-    const offsetY = selectionState.currentY;
-
-    // Use the same erase technique as the endSelection function
-    activeLayerCtx.save();
-    activeLayerCtx.beginPath();
-    activeLayerCtx.moveTo(path[0].x + offsetX, path[0].y + offsetY);
-    for (let i = 1; i < path.length; i++) {
-        activeLayerCtx.lineTo(path[i].x + offsetX, path[i].y + offsetY);
-    }
-    activeLayerCtx.closePath();
-    activeLayerCtx.globalCompositeOperation = 'destination-out';
-    activeLayerCtx.fill();
-    activeLayerCtx.restore();
-
-    // After deleting the content, clear the selection "marching ants"
-    clearSelection();
+/** Erases the content within the current floating selection and saves the state. */
+export function deleteSelectionContents() {
+    if (!selectionState.isFloating || !selectionState.tempCtx) return;
+    selectionState.tempCtx.clearRect(0, 0, selectionState.tempCanvas.width, selectionState.tempCanvas.height);
+    saveSelectionState();
 }
 
-/**
- * Initializes the start of a move operation.
- * @param {number} x - The starting x-coordinate of the drag.
- * @param {number} y - The starting y-coordinate of the drag.
- */
+/** Initializes the start of a move operation. */
 export function startMove(x, y) {
     if (!selectionState.isFloating) return;
     selectionState.moveStartX = x;
     selectionState.moveStartY = y;
 }
 
-/**
- * Updates the position of the selection based on mouse movement.
- * @param {number} x - The current x-coordinate of the drag.
- * @param {number} y - The current y-coordinate of the drag.
- */
+/** Updates the position of the selection based on mouse movement. */
 export function moveSelection(x, y) {
     if (!selectionState.isFloating) return;
     const dx = x - selectionState.moveStartX;
@@ -195,36 +181,134 @@ export function moveSelection(x, y) {
 }
 
 /**
- * Checks if a point is inside the current floating selection's path using the ray-casting algorithm.
- * @param {number} checkX - The x-coordinate to check.
- * @param {number} checkY - The y-coordinate to check.
- * @returns {boolean}
+ * Draws directly onto the floating selection's temporary canvas.
+ * @param {number} startX - The previous transformed x-coordinate.
+ * @param {number} startY - The previous transformed y-coordinate.
+ * @param {number} endX - The current transformed x-coordinate.
+ * @param {number} endY - The current transformed y-coordinate.
+ * @param {object} state - Contains tool info like color and size.
  */
+export function drawOnSelection(startX, startY, endX, endY, state) {
+    if (!selectionState.isFloating || !selectionState.tempCtx) return;
+
+    const { activeTool, colorPicker, brushSizeSlider } = state;
+    const ctx = selectionState.tempCtx;
+
+    const localStartX = startX - selectionState.currentX;
+    const localStartY = startY - selectionState.currentY;
+    const localEndX = endX - selectionState.currentX;
+    const localEndY = endY - selectionState.currentY;
+
+    ctx.beginPath();
+    ctx.moveTo(localStartX, localStartY);
+    ctx.lineTo(localEndX, localEndY);
+    ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : colorPicker.value;
+    ctx.lineWidth = brushSizeSlider.value;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+}
+
+/**
+ * Performs a flood fill operation on the selection's temporary canvas.
+ * @param {number} canvasX - The x-coordinate of the click on the main canvas.
+ * @param {number} canvasY - The y-coordinate of the click on the main canvas.
+ * @param {string} fillColorHex - The hex code of the color to fill with.
+ */
+export function fillSelection(canvasX, canvasY, fillColorHex) {
+    if (!selectionState.isFloating || !selectionState.tempCtx) return;
+
+    const ctx = selectionState.tempCtx;
+    const canvas = selectionState.tempCanvas;
+    
+    const startX = Math.floor(canvasX - selectionState.currentX);
+    const startY = Math.floor(canvasY - selectionState.currentY);
+    
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const { width, height, data } = imageData;
+
+    if (startX < 0 || startX >= width || startY < 0 || startY >= height) return;
+    
+    const targetColor = getPixelColor(startX, startY, width, data);
+    const fillColor = hexToRgba(fillColorHex);
+
+    if (colorsMatch(targetColor, fillColor)) return;
+    if (targetColor.a === 0) return; // Don't fill transparent areas
+
+    const queue = [[startX, startY]];
+    while(queue.length > 0) {
+        const [x, y] = queue.shift();
+        if (x < 0 || x >= width || y < 0 || y >= height) continue;
+
+        const currentColor = getPixelColor(x, y, width, data);
+        if (colorsMatch(currentColor, targetColor)) {
+            setPixelColor(x, y, fillColor, width, data);
+            queue.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+        }
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
+/** Checks if a point is inside the current floating selection's path. */
 export function isPointInSelection(checkX, checkY) {
     if (!selectionState.isFloating || !selectionState.path.length) return false;
-
     const path = selectionState.path;
     const offsetX = selectionState.currentX;
     const offsetY = selectionState.currentY;
     let inside = false;
-
     for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
-        const xi = path[i].x + offsetX;
-        const yi = path[i].y + offsetY;
-        const xj = path[j].x + offsetX;
-        const yj = path[j].y + offsetY;
-
-        const intersect = ((yi > checkY) !== (yj > checkY))
-            && (checkX < (xj - xi) * (checkY - yi) / (yj - yi) + xi);
+        const xi = path[i].x + offsetX, yi = path[i].y + offsetY;
+        const xj = path[j].x + offsetX, yj = path[j].y + offsetY;
+        const intersect = ((yi > checkY) !== (yj > checkY)) && (checkX < (xj - xi) * (checkY - yi) / (yj - yi) + xi);
         if (intersect) inside = !inside;
     }
     return inside;
 }
 
-/**
- * Returns the current selection state for rendering purposes.
- * @returns {object}
- */
+/** Saves the current state of the selection's canvas to its temporary history. */
+export function saveSelectionState() {
+    if (!selectionState.tempCtx) return;
+    const stateToSave = {
+        imageData: selectionState.tempCtx.getImageData(0, 0, selectionState.tempCanvas.width, selectionState.tempCanvas.height),
+        x: selectionState.currentX,
+        y: selectionState.currentY,
+    };
+    selectionState.tempHistory.push(stateToSave);
+    selectionState.tempRedoStack = [];
+}
+
+/** Undoes the last change made to the floating selection. */
+export function undoSelectionChange() {
+    if (selectionState.tempHistory.length < 2) return;
+    const currentState = selectionState.tempHistory.pop();
+    selectionState.tempRedoStack.push(currentState);
+    const prevState = selectionState.tempHistory[selectionState.tempHistory.length - 1];
+    
+    selectionState.tempCtx.putImageData(prevState.imageData, 0, 0);
+    selectionState.currentX = prevState.x;
+    selectionState.currentY = prevState.y;
+
+    // MODIFIED: Force the main canvas to redraw to show the change
+    document.dispatchEvent(new CustomEvent('requestRedraw'));
+}
+
+/** Redoes the last undone change to the floating selection. */
+export function redoSelectionChange() {
+    if (selectionState.tempRedoStack.length === 0) return;
+    const nextState = selectionState.tempRedoStack.pop();
+    selectionState.tempHistory.push(nextState);
+
+    selectionState.tempCtx.putImageData(nextState.imageData, 0, 0);
+    selectionState.currentX = nextState.x;
+    selectionState.currentY = nextState.y;
+    
+    // MODIFIED: Force the main canvas to redraw to show the change
+    document.dispatchEvent(new CustomEvent('requestRedraw'));
+}
+
+/** Returns the current selection state. */
 export function getSelectionState() {
     return selectionState;
 }
+
