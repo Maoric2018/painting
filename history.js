@@ -1,63 +1,40 @@
 // --- This module is now responsible for managing separate history stacks for each layer ---
 
-// Use Maps to store history and redo stacks for each layer, keyed by layer ID.
 let historyByLayer = new Map();
 let redoStackByLayer = new Map();
 
-/**
- * Creates a new history stack for a new layer.
- * @param {number} layerId - The unique ID of the new layer.
- * @param {CanvasRenderingContext2D} ctx - The context of the layer's canvas.
- * @param {HTMLCanvasElement} canvas - The layer's canvas element.
- */
+/** Creates a new history stack for a new layer. */
 export function initializeHistoryForLayer(layerId, ctx, canvas) {
     const initialState = ctx.getImageData(0, 0, canvas.width, canvas.height);
     historyByLayer.set(layerId, [initialState]);
     redoStackByLayer.set(layerId, []);
 }
 
-/**
- * Deletes the history for a layer that is being removed.
- * @param {number} layerId - The ID of the layer to remove.
- */
+/** Deletes the history for a layer that is being removed. */
 export function deleteHistoryForLayer(layerId) {
     historyByLayer.delete(layerId);
     redoStackByLayer.delete(layerId);
 }
 
-/**
- * Saves the current state of a specific layer to its history stack.
- * @param {number} layerId - The ID of the layer to save.
- * @param {CanvasRenderingContext2D} ctx - The layer's rendering context.
- * @param {HTMLCanvasElement} canvas - The layer's canvas element.
- */
+/** Saves the current state of a specific layer to its history stack. */
 export function saveState(layerId, ctx, canvas) {
     const history = historyByLayer.get(layerId);
-    if (!history) return;
+    if (!history) return; 
 
     redoStackByLayer.set(layerId, []); 
     
-    if (history.length > 50) { // Increased history limit
-        history.shift();
+    if (history.length > 30) {
+        history.shift(); 
     }
     history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
 }
 
-/**
- * Restores a canvas context to a specific state from an ImageData object.
- * @param {CanvasRenderingContext2D} ctx - The context to restore to.
- * @param {ImageData} imageData - The pixel data to restore.
- */
 function restoreState(ctx, imageData) {
     if (!imageData) return;
     ctx.putImageData(imageData, 0, 0);
 }
 
-/**
- * Handles the undo action for a specific layer.
- * @param {number} layerId - The ID of the active layer.
- * @param {CanvasRenderingContext2D} ctx - The context of the active layer.
- */
+/** Handles the undo action for a specific layer. */
 export function undo(layerId, ctx) {
     const history = historyByLayer.get(layerId);
     const redoStack = redoStackByLayer.get(layerId);
@@ -68,11 +45,7 @@ export function undo(layerId, ctx) {
     }
 }
 
-/**
- * Handles the redo action for a specific layer.
- * @param {number} layerId - The ID of the active layer.
- * @param {CanvasRenderingContext2D} ctx - The context of the active layer.
- */
+/** Handles the redo action for a specific layer. */
 export function redo(layerId, ctx) {
     const history = historyByLayer.get(layerId);
     const redoStack = redoStackByLayer.get(layerId);
@@ -83,29 +56,19 @@ export function redo(layerId, ctx) {
     }
 }
 
-/**
- * Gets the history length for a specific layer.
- * @param {number} layerId - The ID of the layer to check.
- * @returns {number}
- */
+/** Gets the history length for a specific layer. */
 export function getHistoryLength(layerId) {
     return historyByLayer.get(layerId)?.length || 0;
 }
 
-/**
- * Gets the redo stack length for a specific layer.
- * @param {number} layerId - The ID of the layer to check.
- * @returns {number}
- */
+/** Gets the redo stack length for a specific layer. */
 export function getRedoStackLength(layerId) {
     return redoStackByLayer.get(layerId)?.length || 0;
 }
 
 /**
- * ADDED: Gets the state of a layer from before the last action.
- * Needed for merging selection history.
- * @param {number} layerId - The ID of the layer.
- * @returns {ImageData|null}
+ * Gets the second-to-last state from a layer's history.
+ * Used to get the state before the selection "cut" was made.
  */
 export function getPenultimateState(layerId) {
     const history = historyByLayer.get(layerId);
@@ -114,20 +77,24 @@ export function getPenultimateState(layerId) {
 }
 
 /**
- * ADDED: Replaces the last history state with a series of new states.
- * This is the core of the history merge operation.
- * @param {number} layerId - The ID of the layer.
- * @param {ImageData[]} newStates - An array of new states to add.
+ * MODIFIED: Gets the most recent state from a layer's history.
+ * Used to get the state with the "hole" after a selection cut.
+ */
+export function getLastState(layerId) {
+    const history = historyByLayer.get(layerId);
+    if (!history || history.length < 1) return null;
+    return history[history.length - 1];
+}
+
+
+/**
+ * Replaces the last history state with a new array of states.
+ * This is used to "inject" the granular selection history into the main history.
  */
 export function replaceLastStateWithMultiple(layerId, newStates) {
     const history = historyByLayer.get(layerId);
-    if (!history || history.length === 0) return;
-    
-    history.pop(); // Remove the last state (the "cut" operation state)
-    
-    for (const state of newStates) {
-        history.push(state);
-    }
-
-    redoStackByLayer.set(layerId, []); // Clear the redo stack after merging
+    if (!history || newStates.length === 0) return;
+    history.pop(); // Remove the single "cut" state
+    history.push(...newStates); // Add the new granular states
 }
+

@@ -1,10 +1,10 @@
 // --- Import necessary functions from other modules ---
 import { handleCanvasClick, draw, stopDrawing, redrawCanvas, pickColorAt, drawZoomPreview } from './canvas.js';
-// MODIFIED: Importing new history functions for merging
+// MODIFIED: Importing getLastState
 import { 
     saveState, undo, redo, getHistoryLength, getRedoStackLength, 
     initializeHistoryForLayer, deleteHistoryForLayer, getPenultimateState, 
-    replaceLastStateWithMultiple 
+    getLastState, replaceLastStateWithMultiple 
 } from './history.js';
 import { getTransformedPoint, zoomOnWheel, startPan, stopPan, pan, getZoom, setContexts } from './viewport.js';
 import { addNewLayer, deleteActiveLayer, getActiveLayer, updateActiveLayerThumbnail, setActiveLayer, getLayerById } from './layers.js';
@@ -12,7 +12,7 @@ import {
     startSelection, addPointToSelection, endSelection, getSelectionState, 
     clearSelection, startMove, moveSelection, isPointInSelection, 
     deleteSelectionContents, drawOnSelection, saveSelectionState, 
-    undoSelectionChange, redoSelectionChange, fillSelection
+    undoSelectionChange, redoSelectionChange, fillSelection, reconstructSelection
 } from './selection.js';
 
 let activeTool = 'brush';
@@ -21,6 +21,7 @@ let isInteracting = false;
 let interactionLayer = null;
 let lastClientX = 0;
 let lastClientY = 0;
+let lastUndoneSelection = null;
 
 /** Initializes all UI event listeners. */
 export function initializeUI(elements) {
@@ -71,7 +72,6 @@ export function initializeUI(elements) {
         const originLayer = getLayerById(selection.originLayerId);
         if (!originLayer) { clearSelection(); return; }
 
-        // If no edits were made to the selection, just paste it and save a single state.
         if (selection.tempHistory.length <= 1) { 
             originLayer.ctx.drawImage(selection.tempCanvas, selection.currentX, selection.currentY);
             onDrawEnd(originLayer);
@@ -80,9 +80,9 @@ export function initializeUI(elements) {
             return;
         }
 
-        const layerBaseState = getPenultimateState(originLayer.id);
-        if (!layerBaseState) {
-            // Failsafe: if we can't get the base state, revert to simple paste.
+        // MODIFIED: Use getLastState to get the canvas with the hole.
+        const layerWithHoleState = getLastState(originLayer.id);
+        if (!layerWithHoleState) {
             originLayer.ctx.drawImage(selection.tempCanvas, selection.currentX, selection.currentY);
             onDrawEnd(originLayer);
             clearSelection();
@@ -95,31 +95,26 @@ export function initializeUI(elements) {
         const tempCompositeCtx = tempCompositeCanvas.getContext('2d');
         const newHistoryStates = [];
 
-        // Replay each step from the selection's history onto the base layer state.
-        // We skip the first state (i=0) because that's the initial cut.
+        // Replay each step from the selection's history onto the layer with the hole.
         for (let i = 1; i < selection.tempHistory.length; i++) {
             const selectionStep = selection.tempHistory[i];
             
-            // 1. Start with the clean state of the layer before the cut.
-            tempCompositeCtx.putImageData(layerBaseState, 0, 0);
+            // 1. Start with the state of the layer with the hole.
+            tempCompositeCtx.putImageData(layerWithHoleState, 0, 0);
 
-            // 2. Create a temporary canvas for just this step of the selection's content.
             const stepCanvas = document.createElement('canvas');
             stepCanvas.width = selectionStep.imageData.width;
             stepCanvas.height = selectionStep.imageData.height;
             stepCanvas.getContext('2d').putImageData(selectionStep.imageData, 0, 0);
 
-            // 3. Draw that selection content onto the clean layer state at its correct position for that step.
+            // 2. Draw the selection content into the hole at its correct position for that step.
             tempCompositeCtx.drawImage(stepCanvas, selectionStep.x, selectionStep.y);
             
-            // 4. Save the result as a new, complete history state for the main layer.
             newHistoryStates.push(tempCompositeCtx.getImageData(0, 0, tempCompositeCanvas.width, tempCompositeCanvas.height));
         }
         
-        // Replace the single "cut" state in the main history with our new granular states.
         replaceLastStateWithMultiple(originLayer.id, newHistoryStates);
 
-        // Update the actual layer canvas to reflect the final merged state.
         const finalState = newHistoryStates[newHistoryStates.length - 1];
         if (finalState) {
             originLayer.ctx.putImageData(finalState, 0, 0);
@@ -247,12 +242,12 @@ export function initializeUI(elements) {
         if (!isInteracting) return;
         const selection = getSelectionState();
         if (activeTool === 'pan') stopPan();
-        // MODIFIED: Corrected the order of operations. Cut first, then save the state.
         else if (activeTool === 'lasso' && selection.isDrawing) {
-            endSelection(interactionLayer); // 1. Cut the pixels from the layer.
-            onDrawEnd(interactionLayer);    // 2. Now, save the state of the layer with the hole.
+            endSelection(interactionLayer);
+            onDrawEnd(interactionLayer);
             updateUndoRedoButtons();
         } else if (selection.isFloating && ['move', 'brush', 'eraser'].includes(activeTool)) {
+            lastUndoneSelection = null;
             saveSelectionState();
             updateUndoRedoButtons();
         } else if (['brush', 'eraser', 'fill'].includes(activeTool) && !selection.isFloating) {
@@ -296,24 +291,38 @@ export function initializeUI(elements) {
             undoSelectionChange();
         } else {
             const layer = selection.isFloating ? getLayerById(selection.originLayerId) : getActiveLayer();
-            if (layer) {
+            if (layer && getHistoryLength(layer.id) > 1) {
+                if (selection.isFloating) {
+                    const s = getSelectionState();
+                    lastUndoneSelection = {
+                        path: s.path,
+                        originLayerId: s.originLayerId,
+                        initialState: s.tempHistory[0],
+                        tempHistory: s.tempHistory,
+                        tempRedoStack: s.tempRedoStack,
+                    };
+                }
                 undo(layer.id, layer.ctx);
                 if (selection.isFloating) {
-                    // If we undo the main layer while a selection is active, it means we're undoing the "cut".
-                    // The selection is now invalid, so we clear it.
                     clearSelection();
                 }
             }
         }
         updateUndoRedoButtons();
     });
+
     redoBtn.addEventListener('click', () => {
         const selection = getSelectionState();
-        if (selection.isFloating && selection.tempRedoStack.length > 0) {
+        const activeLayer = getActiveLayer() || (selection.isFloating ? getLayerById(selection.originLayerId) : null);
+
+        if (lastUndoneSelection && activeLayer && getRedoStackLength(activeLayer.id) > 0) {
+            redo(activeLayer.id, activeLayer.ctx);
+            reconstructSelection(lastUndoneSelection);
+            lastUndoneSelection = null;
+        } else if (selection.isFloating && selection.tempRedoStack.length > 0) {
             redoSelectionChange();
-        } else if (!selection.isFloating) { // Only redo layer if no selection is active
-            const activeLayer = getActiveLayer();
-            if (activeLayer) redo(activeLayer.id, activeLayer.ctx);
+        } else if (!selection.isFloating && activeLayer) {
+            redo(activeLayer.id, activeLayer.ctx);
         }
         updateUndoRedoButtons();
     });
@@ -342,16 +351,15 @@ export function initializeUI(elements) {
         if (selection.isFloating) {
             const hasSelectionUndo = selection.tempHistory.length > 1;
             const originLayer = getLayerById(selection.originLayerId);
-            // We can undo the main layer if the selection history is at its start.
             const hasLayerUndo = originLayer ? getHistoryLength(originLayer.id) > 1 : false;
             
             undoBtn.disabled = !hasSelectionUndo && !hasLayerUndo;
-            redoBtn.disabled = selection.tempRedoStack.length === 0;
+            redoBtn.disabled = selection.tempRedoStack.length === 0 && !lastUndoneSelection;
         } else {
             const activeLayer = getActiveLayer();
             if (activeLayer) {
                 undoBtn.disabled = getHistoryLength(activeLayer.id) <= 1;
-                redoBtn.disabled = getRedoStackLength(activeLayer.id) === 0;
+                redoBtn.disabled = getRedoStackLength(activeLayer.id) === 0 && !lastUndoneSelection;
             } else {
                 undoBtn.disabled = true;
                 redoBtn.disabled = true;
@@ -360,6 +368,7 @@ export function initializeUI(elements) {
     }
     
     function onDrawEnd(targetLayer = null) {
+        lastUndoneSelection = null;
         const layerToUpdate = targetLayer || getActiveLayer();
         if (layerToUpdate) {
             saveState(layerToUpdate.id, layerToUpdate.ctx, layerToUpdate.canvas);
