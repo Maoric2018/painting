@@ -1,6 +1,5 @@
 // --- Import necessary functions from other modules ---
 import { handleCanvasClick, draw, stopDrawing, redrawCanvas, pickColorAt, drawZoomPreview } from './canvas.js';
-// MODIFIED: Importing getLastState
 import { 
     saveState, undo, redo, getHistoryLength, getRedoStackLength, 
     initializeHistoryForLayer, deleteHistoryForLayer, getPenultimateState, 
@@ -62,9 +61,6 @@ export function initializeUI(elements) {
         brushPreview.style.height = `${size}px`;
     }
     
-    /**
-     * Commits the floating selection, merging its granular history with the main layer's history.
-     */
     function commitSelection() {
         const selection = getSelectionState();
         if (!selection.isFloating) { clearSelection(); return; }
@@ -80,7 +76,6 @@ export function initializeUI(elements) {
             return;
         }
 
-        // MODIFIED: Use getLastState to get the canvas with the hole.
         const layerWithHoleState = getLastState(originLayer.id);
         if (!layerWithHoleState) {
             originLayer.ctx.drawImage(selection.tempCanvas, selection.currentX, selection.currentY);
@@ -95,11 +90,9 @@ export function initializeUI(elements) {
         const tempCompositeCtx = tempCompositeCanvas.getContext('2d');
         const newHistoryStates = [];
 
-        // Replay each step from the selection's history onto the layer with the hole.
         for (let i = 1; i < selection.tempHistory.length; i++) {
             const selectionStep = selection.tempHistory[i];
             
-            // 1. Start with the state of the layer with the hole.
             tempCompositeCtx.putImageData(layerWithHoleState, 0, 0);
 
             const stepCanvas = document.createElement('canvas');
@@ -107,7 +100,6 @@ export function initializeUI(elements) {
             stepCanvas.height = selectionStep.imageData.height;
             stepCanvas.getContext('2d').putImageData(selectionStep.imageData, 0, 0);
 
-            // 2. Draw the selection content into the hole at its correct position for that step.
             tempCompositeCtx.drawImage(stepCanvas, selectionStep.x, selectionStep.y);
             
             newHistoryStates.push(tempCompositeCtx.getImageData(0, 0, tempCompositeCanvas.width, tempCompositeCanvas.height));
@@ -160,42 +152,53 @@ export function initializeUI(elements) {
         lastClientX = e.clientX;
         lastClientY = e.clientY;
 
-        if (!interactionLayer && activeTool !== 'pan' && !getSelectionState().isFloating) { 
-            isInteracting = false; return; 
+        if (!interactionLayer && activeTool !== 'pan' && !getSelectionState().isFloating) {
+            isInteracting = false; return;
         }
 
-        if (activeTool === 'eyedropper') {
-            const color = pickColorAt(elements.ctx, (e.clientX - canvas.getBoundingClientRect().left) * (window.devicePixelRatio||1), (e.clientY - canvas.getBoundingClientRect().top) * (window.devicePixelRatio||1));
-            colorPicker.value = color;
-            document.getElementById(previousTool)?.click();
-            isInteracting = false;
-            return;
-        }
-        
         const transformedPoint = getTransformedPoint(e.clientX - canvas.getBoundingClientRect().left, e.clientY - canvas.getBoundingClientRect().top);
         const selection = getSelectionState();
 
-        if (activeTool === 'pan') startPan(e);
-        else if (activeTool === 'lasso') {
-            if (selection.isFloating && !isPointInSelection(transformedPoint.x, transformedPoint.y)) commitSelection();
-            else startSelection(transformedPoint.x, transformedPoint.y, commitSelection);
+        if (activeTool === 'pan') {
+            startPan(e);
+        } else if (activeTool === 'lasso') {
+            startSelection(transformedPoint.x, transformedPoint.y, commitSelection);
         } else if (activeTool === 'move') {
             if (selection.isFloating) {
-                if (isPointInSelection(transformedPoint.x, transformedPoint.y)) startMove(transformedPoint.x, transformedPoint.y);
-                else commitSelection();
+                if (isPointInSelection(transformedPoint.x, transformedPoint.y)) {
+                    startMove(transformedPoint.x, transformedPoint.y);
+                } else {
+                    isInteracting = false;
+                }
             }
-        } else if (activeTool === 'fill' && selection.isFloating && isPointInSelection(transformedPoint.x, transformedPoint.y)) {
-            fillSelection(transformedPoint.x, transformedPoint.y, colorPicker.value);
-            saveSelectionState();
-            updateUndoRedoButtons();
-            isInteracting = false;
-        } else {
-            const isDrawingInSelection = selection.isFloating && isPointInSelection(transformedPoint.x, transformedPoint.y);
-            if (!isDrawingInSelection && !selection.isFloating) {
-                const state = { activeLayer: interactionLayer, activeTool, colorPicker, brushSizeSlider };
-                handleCanvasClick(transformedPoint.x, transformedPoint.y, state, () => onDrawEnd(interactionLayer));
-            } else if (!isDrawingInSelection && selection.isFloating) {
-                commitSelection();
+        } else { // Handles Brush, Eraser, and Fill
+            const isInside = selection.isFloating && isPointInSelection(transformedPoint.x, transformedPoint.y);
+
+            if (!selection.isFloating || isInside) {
+                if (activeTool === 'fill') {
+                    if (isInside) {
+                        fillSelection(transformedPoint.x, transformedPoint.y, colorPicker.value);
+                        saveSelectionState();
+                        updateUndoRedoButtons();
+                        isInteracting = false;
+                    } else if (!selection.isFloating) {
+                        const state = { activeLayer: interactionLayer, activeTool, colorPicker, brushSizeSlider };
+                        handleCanvasClick(transformedPoint.x, transformedPoint.y, state, () => onDrawEnd(interactionLayer));
+                    }
+                } else if (['brush', 'eraser'].includes(activeTool)) {
+                    // MODIFIED: This block now correctly handles single-click dots inside a selection.
+                    if (isInside) {
+                        // If inside a selection, draw a dot directly on the selection's temporary canvas.
+                        const state = { activeTool, colorPicker, brushSizeSlider };
+                        drawOnSelection(transformedPoint.x, transformedPoint.y, transformedPoint.x, transformedPoint.y, state);
+                    } else {
+                        // Otherwise, use the original behavior to draw on the main layer.
+                        const state = { activeLayer: interactionLayer, activeTool, colorPicker, brushSizeSlider };
+                        handleCanvasClick(transformedPoint.x, transformedPoint.y, state, () => onDrawEnd(interactionLayer));
+                    }
+                }
+            } else {
+                isInteracting = false;
             }
         }
         updateCursor(e, true);
@@ -226,10 +229,10 @@ export function initializeUI(elements) {
         else if (activeTool === 'move' && selection.isFloating) moveSelection(transformedPoint.x, transformedPoint.y);
         else if (['brush', 'eraser'].includes(activeTool)) {
             const lastTransformedPoint = getTransformedPoint(lastClientX - canvas.getBoundingClientRect().left, lastClientY - canvas.getBoundingClientRect().top);
-            if (selection.isFloating && (isPointInSelection(transformedPoint.x, transformedPoint.y) || isPointInSelection(lastTransformedPoint.x, lastTransformedPoint.y))) {
+            if (selection.isFloating) {
                 const state = { activeTool, colorPicker, brushSizeSlider };
                 drawOnSelection(lastTransformedPoint.x, lastTransformedPoint.y, transformedPoint.x, transformedPoint.y, state);
-            } else if (!selection.isFloating) {
+            } else {
                 const state = { activeLayer: interactionLayer, activeTool, colorPicker, brushSizeSlider };
                 draw(transformedPoint.x, transformedPoint.y, state);
             }
