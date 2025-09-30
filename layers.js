@@ -190,7 +190,11 @@ function createLayerItemElement(layer) {
         </div>
         <div class="visibility-toggle flex-shrink-0 ${!layer.isVisible ? 'hidden-layer' : ''}" data-layer-id="${layer.id}">
             <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-            <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9 9 0 0 1 12 3a9.9 9.9 0 0 1 8.8 5.2c.4.8.4 1.7 0 2.5A9.9 9.9 0 0 1 12 21a9 9 0 0 1-8.8-5.2c-.5-.8-.5-1.7 0-2.5l1-1.75"/><path d="m2.5 2.5 19 19"/></svg>
+            <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                <circle cx="12" cy="12" r="3"/>
+                <line x1="3" y1="3" x2="21" y2="21"/>
+            </svg>
         </div>
     `;
 

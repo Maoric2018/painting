@@ -27,7 +27,10 @@
                         <input type="color" id="colorPicker" value="#000000">
                     </div>
                     <button id="eyedropper" class="tool-button p-2 rounded-md" title="Pick Color from Canvas">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 2-2.5 2.5 3 3L19 5Z"/><path d="m14 4-8 8 3 3 8-8Z"/><path d="m3 21 3-3 8.5-8.5-3-3L3 18Z"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                           <path d="M15 9L3 21"/>
+                           <circle cx="17" cy="7" r="4"/>
+                        </svg>
                     </button>
                 </div>
             </div>
@@ -60,11 +63,19 @@
                     <span>Pan</span>
                 </button>
                 <button id="lasso" class="tool-button flex items-center justify-center space-x-2 p-2 rounded-md">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.2 3.3a1 1 0 0 0-1.4 0l-4 4a1 1 0 0 0 0 1.4l7 7a1 1 0 0 0 1.4 0l4-4a1 1 0 0 0 0-1.4Z"/><path d="M13 19.5 5.5 12a1 1 0 0 0-1.4 0l-2.6 2.6a1 1 0 0 0 0 1.4l7.5 7.5c.4.4 1 .4 1.4 0l2.6-2.6a1 1 0 0 0 0-1.4Z"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6.5 10.5C3.5 9.5 2 12.5 4 15.5C6 18.5 9.5 19.5 12.5 18.5C15.5 17.5 18.5 17 19 14C19.5 11 17 8 14 8C11 8 9.5 11.5 6.5 10.5Z"/>
+                        <path d="M5.5 14.5L3 20"/>
+                    </svg>
                     <span>Lasso</span>
                 </button>
                 <button id="move" class="tool-button flex items-center justify-center space-x-2 p-2 rounded-md">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 12 3-3 3 3-3 3-3-3Z"/><path d="m14 12 3-3 3 3-3 3-3-3Z"/><path d="m8.5 8.5 7 7"/><path d="m8.5 15.5 7-7"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/>
+                        <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/>
+                        <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/>
+                        <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h2.5"/>
+                    </svg>
                     <span>Move</span>
                 </button>
             </div>
@@ -73,10 +84,10 @@
 
             <div class="grid grid-cols-2 gap-2">
                 <button id="undo-btn" class="flex items-center justify-center space-x-2 bg-gray-700 hover:bg-gray-600 p-3 rounded-lg disabled:opacity-50 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 13a9 9 0 1 1-3.3-8.8"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
                 </button>
                 <button id="redo-btn" class="flex items-center justify-center space-x-2 bg-gray-700 hover:bg-gray-600 p-3 rounded-lg disabled:opacity-50 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 13a9 9 0 1 0 3.3-8.8"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/></svg>
                 </button>
             </div>
         </aside>
@@ -108,3 +119,4 @@
     <script type="module" src="main.js"></script>
 </body>
 </html>
+
