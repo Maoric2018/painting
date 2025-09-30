@@ -156,6 +156,30 @@ export function initializeUI(elements) {
             isInteracting = false; return;
         }
 
+        // MODIFIED: This entire block is updated for the eyedropper fix.
+        if (activeTool === 'eyedropper') {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            // Get coordinates scaled by device pixel ratio for accurate color picking
+            const screenX = (e.clientX - rect.left) * dpr;
+            const screenY = (e.clientY - rect.top) * dpr;
+            
+            // Pick the color from the visible canvas context
+            const color = pickColorAt(elements.ctx, screenX, screenY);
+            // Set the main color picker's value
+            colorPicker.value = color;
+            
+            // Find the button for the previous tool and simulate a click to switch back
+            const prevToolButton = document.getElementById(previousTool);
+            if (prevToolButton) {
+                prevToolButton.click();
+            }
+            
+            // Eyedropper is a single-click action, so we end the interaction immediately.
+            isInteracting = false;
+            return; // Stop further processing for this click
+        }
+
         const transformedPoint = getTransformedPoint(e.clientX - canvas.getBoundingClientRect().left, e.clientY - canvas.getBoundingClientRect().top);
         const selection = getSelectionState();
 
@@ -186,13 +210,10 @@ export function initializeUI(elements) {
                         handleCanvasClick(transformedPoint.x, transformedPoint.y, state, () => onDrawEnd(interactionLayer));
                     }
                 } else if (['brush', 'eraser'].includes(activeTool)) {
-                    // MODIFIED: This block now correctly handles single-click dots inside a selection.
                     if (isInside) {
-                        // If inside a selection, draw a dot directly on the selection's temporary canvas.
                         const state = { activeTool, colorPicker, brushSizeSlider };
                         drawOnSelection(transformedPoint.x, transformedPoint.y, transformedPoint.x, transformedPoint.y, state);
                     } else {
-                        // Otherwise, use the original behavior to draw on the main layer.
                         const state = { activeLayer: interactionLayer, activeTool, colorPicker, brushSizeSlider };
                         handleCanvasClick(transformedPoint.x, transformedPoint.y, state, () => onDrawEnd(interactionLayer));
                     }
@@ -273,6 +294,7 @@ export function initializeUI(elements) {
             if (getSelectionState().isFloating && !allowedTools.includes(button.id)) {
                 commitSelection();
             }
+            // MODIFIED: Store the previous tool *unless* the eyedropper is already active
             if (button.id === 'eyedropper' && activeTool !== 'eyedropper') {
                 previousTool = activeTool;
             }
